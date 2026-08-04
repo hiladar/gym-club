@@ -440,7 +440,7 @@ function exerciseFromRow(row){
   return { name: row.exercise_name, sets: row.sets, reps: row.reps, weight: row.working_weight_kg, rest: row.rest_time, notes: row.notes };
 }
 function noteFromRow(row){
-  return { id: row.id, date: row.date, time: row.time ? row.time.slice(0,5) : '', note: row.note };
+  return { id: row.id, date: row.date, time: row.time ? row.time.slice(0,5) : '', note: row.note, audioUrl: row.audio_url || null };
 }
 
 async function loadState(){
@@ -505,6 +505,8 @@ function fmtDate(d){
 
 var ICON_EDIT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>';
 var ICON_DELETE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>';
+var ICON_MIC = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>';
+var ICON_STOP = '<svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="5" y="5" width="14" height="14" rx="2" ry="2"/></svg>';
 function rowActionsHtml(editAttr, delAttr, id){
   return '<td class="actions">'+
     '<button class="btn btn-icon-only btn-ghost btn-sm" '+editAttr+'="'+id+'" title="עריכה" aria-label="עריכה">'+ICON_EDIT+'</button>'+
@@ -935,7 +937,9 @@ function renderTrainingNotes(panel, client, viewing, sortedPlans){
     var tr = document.createElement('tr');
     tr.innerHTML =
       '<td data-label="תאריך">'+fmtDate(n.date)+'</td><td data-label="שעה">'+(n.time||'—')+'</td>'+
-      '<td class="wrap-value" data-label="הערה">'+n.note+'</td>'+
+      '<td class="wrap-value" data-label="הערה">'+n.note+
+        (n.audioUrl ? '<audio controls src="'+n.audioUrl+'" style="display:block;height:30px;max-width:220px;margin-top:6px;"></audio>' : '')+
+      '</td>'+
       rowActionsHtml('data-edit-note', 'data-del-note', n.id);
     rows.appendChild(tr);
   });
@@ -973,28 +977,132 @@ function renderTrainingNotes(panel, client, viewing, sortedPlans){
 function openTrainingNoteForm(client, note){
   var isNew = !note;
   var now = new Date();
-  var v = note || {date:now.toISOString().slice(0,10), time:now.toTimeString().slice(0,5), note:''};
+  var v = note || {date:now.toISOString().slice(0,10), time:now.toTimeString().slice(0,5), note:'', audioUrl:null};
   var body =
     '<div class="form-grid">'+
       '<div class="form-row"><label>תאריך</label><input type="date" id="f_notedate" value="'+v.date+'"></div>'+
       '<div class="form-row"><label>שעה</label><input type="time" id="f_notetime" value="'+v.time+'"></div>'+
     '</div>'+
-    '<div class="form-row"><label>הערה</label><textarea id="f_notetext">'+(v.note||'')+'</textarea></div>';
+    '<div class="form-row"><label>הערה</label>'+
+      '<div style="display:flex;gap:8px;align-items:flex-start;">'+
+        '<textarea id="f_notetext" style="flex:1;">'+(v.note||'')+'</textarea>'+
+        '<button type="button" class="btn btn-icon-only btn-ghost" id="btnRecordNote" style="width:36px;height:36px;" title="הקלטת הערה">'+ICON_MIC+'</button>'+
+      '</div>'+
+      '<div id="recordStatus" class="field-value muted" style="font-size:12.5px;margin-top:4px;"></div>'+
+      '<div id="audioPreviewWrap" style="margin-top:6px;"></div>'+
+    '</div>';
   var foot = '<button class="btn" id="btnCancel">ביטול</button><button class="btn btn-accent" id="btnSave">שמירה</button>';
   openModal(isNew ? 'הערת אימון חדשה' : 'עריכת הערת אימון', body, foot);
+
+  var recordedBlob = null;          // new recording made in this session, pending upload on save
+  var keptAudioUrl = v.audioUrl || null; // existing audio, kept unless overwritten by a new recording
+  var mediaRecorder = null, mediaChunks = [], recognition = null, micStream = null, recording = false;
+  var textarea = $('#f_notetext');
+  var recordBtn = $('#btnRecordNote');
+  var statusEl = $('#recordStatus');
+  var previewWrap = $('#audioPreviewWrap');
+
+  function renderAudioPreview(){
+    if(recordedBlob){
+      previewWrap.innerHTML = '<audio controls src="'+URL.createObjectURL(recordedBlob)+'" style="height:32px;max-width:260px;"></audio>';
+    } else if(keptAudioUrl){
+      previewWrap.innerHTML = '<audio controls src="'+keptAudioUrl+'" style="height:32px;max-width:260px;"></audio>';
+    } else {
+      previewWrap.innerHTML = '';
+    }
+  }
+  renderAudioPreview();
+  modalCloseCleanup = function(){ if(recording) stopRecording(); };
+
+  var SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+  var baseText = textarea.value;
+
+  function startRecording(){
+    navigator.mediaDevices.getUserMedia({audio:true}).then(function(stream){
+      micStream = stream;
+      mediaChunks = [];
+      mediaRecorder = new MediaRecorder(stream);
+      mediaRecorder.addEventListener('dataavailable', function(e){ if(e.data.size>0) mediaChunks.push(e.data); });
+      mediaRecorder.addEventListener('stop', function(){
+        recordedBlob = new Blob(mediaChunks, {type: mediaRecorder.mimeType || 'audio/webm'});
+        renderAudioPreview();
+        micStream.getTracks().forEach(function(t){ t.stop(); });
+      });
+      mediaRecorder.start();
+
+      baseText = textarea.value;
+      if(SpeechRec){
+        recognition = new SpeechRec();
+        recognition.lang = 'he-IL';
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.addEventListener('result', function(e){
+          var finalText = '', interimText = '';
+          for(var i=0;i<e.results.length;i++){
+            if(e.results[i].isFinal) finalText += e.results[i][0].transcript;
+            else interimText += e.results[i][0].transcript;
+          }
+          textarea.value = (baseText ? baseText+' ' : '') + finalText + interimText;
+        });
+        recognition.addEventListener('error', function(){});
+        recognition.start();
+      } else {
+        statusEl.textContent = 'מקליט… (תמלול אוטומטי אינו נתמך בדפדפן זה — אפשר להקליד את ההערה בעצמכם)';
+      }
+
+      recording = true;
+      recordBtn.innerHTML = ICON_STOP;
+      recordBtn.classList.remove('btn-ghost');
+      recordBtn.classList.add('btn-accent');
+      recordBtn.title = 'עצירת הקלטה';
+      if(SpeechRec) statusEl.textContent = 'מקליט ומתמלל…';
+    }).catch(function(err){
+      alert('לא ניתן לגשת למיקרופון: '+err.message);
+    });
+  }
+
+  function stopRecording(){
+    recording = false;
+    recordBtn.innerHTML = ICON_MIC;
+    recordBtn.classList.remove('btn-accent');
+    recordBtn.classList.add('btn-ghost');
+    recordBtn.title = 'הקלטת הערה';
+    statusEl.textContent = '';
+    if(mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+    if(recognition){ recognition.stop(); recognition = null; }
+  }
+
+  recordBtn.addEventListener('click', function(){
+    if(!navigator.mediaDevices || !window.MediaRecorder){
+      alert('הקלטת אודיו אינה נתמכת בדפדפן זה.');
+      return;
+    }
+    if(recording) stopRecording(); else startRecording();
+  });
+
   $('#btnCancel').addEventListener('click', closeModal);
   $('#btnSave').addEventListener('click', async function(){
+    if(recording) stopRecording();
     var text = $('#f_notetext').value.trim();
     if(!text){ alert('יש להזין טקסט הערה'); return; }
-    var data = { date:$('#f_notedate').value, time:$('#f_notetime').value, note:text };
+
+    var audioUrl = keptAudioUrl;
+    if(recordedBlob){
+      var path = client.id+'/'+Date.now()+'.webm';
+      var up = await sb.storage.from('training-note-audio').upload(path, recordedBlob, {contentType: recordedBlob.type});
+      if(up.error){ alert('שגיאה בהעלאת ההקלטה: '+up.error.message); return; }
+      audioUrl = sb.storage.from('training-note-audio').getPublicUrl(path).data.publicUrl;
+    }
+
+    var data = { date:$('#f_notedate').value, time:$('#f_notetime').value, note:text, audioUrl: audioUrl };
     if(isNew){
-      var res = await sb.from('training_notes').insert({client_id:client.id, date:data.date, time:data.time, note:data.note}).select().single();
+      var res = await sb.from('training_notes').insert({client_id:client.id, date:data.date, time:data.time, note:data.note, audio_url:data.audioUrl}).select().single();
       if(res.error){ alert('שגיאה בשמירת ההערה: '+res.error.message); return; }
       data.id = res.data.id;
       client.trainingNotes = client.trainingNotes || [];
       client.trainingNotes.push(data);
     } else {
-      var res = await sb.from('training_notes').update({date:data.date, time:data.time, note:data.note}).eq('id', note.id);
+      var res = await sb.from('training_notes').update({date:data.date, time:data.time, note:data.note, audio_url:data.audioUrl}).eq('id', note.id);
       if(res.error){ alert('שגיאה בעדכון ההערה: '+res.error.message); return; }
       Object.assign(note, data);
     }
@@ -1013,7 +1121,11 @@ function openModal(title, bodyHtml, footHtml){
   $('#btnCloseModal').addEventListener('click', closeModal);
   history.pushState({modal:true}, '', location.href);
 }
-function hideModalDom(){ $('#overlay').classList.remove('open'); $('#modal').innerHTML=''; }
+var modalCloseCleanup = null; // optional callback set by a form to release resources (e.g. an open mic stream) however the modal closes
+function hideModalDom(){
+  $('#overlay').classList.remove('open'); $('#modal').innerHTML='';
+  if(modalCloseCleanup){ modalCloseCleanup(); modalCloseCleanup = null; }
+}
 function closeModal(){
   if(history.state && history.state.modal){ history.back(); }
   else { hideModalDom(); }

@@ -83,6 +83,7 @@ create table training_notes (
   date        date not null,
   time        time,
   note        text not null,
+  audio_url   text,
   created_at  timestamptz not null default now()
 );
 create index on training_notes (client_id, date desc);

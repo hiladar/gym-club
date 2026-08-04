@@ -224,7 +224,8 @@
   .section-title:first-child{ margin-top:0; }
 
   /* metric switcher + featured chart (mobile-first: one big chart, chips pick the metric) */
-  .metric-chips{ display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:14px; }
+  .metric-chips{ display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-bottom:14px; }
+  @media (max-width:420px){ .metric-chips{ grid-template-columns:repeat(2,1fr); } }
   .metric-chip{
     text-align:start; border:1px solid var(--border); background:var(--bg-surface); border-radius:11px;
     padding:10px 12px; cursor:pointer; font-family:inherit; display:flex; flex-direction:column; gap:2px;
@@ -257,6 +258,20 @@
   table.data td.actions{ white-space:nowrap; text-align:end; font-variant-numeric:normal; padding-inline-end:6px; }
   table.data td.actions .btn+.btn{ margin-inline-start:2px; }
   .table-scroll{ overflow-x:auto; }
+
+  /* compact exercise cards for the training plan — replaces a long stacked field list */
+  /* per exercise (name/sets/reps/weight/rest/notes) so the coach-notes section below stays reachable */
+  /* named exview-* (not ex-*) to avoid colliding with the .ex-card exercise-row editor used in the plan form */
+  .exview-list{ display:flex; flex-direction:column; gap:8px; }
+  .exview-card{ border:1px solid var(--border); border-radius:12px; padding:10px 12px; }
+  .exview-name{ font-size:15px; font-weight:700; margin-bottom:6px; }
+  .exview-stats{ display:grid; grid-template-columns:repeat(4,1fr); gap:5px; }
+  @media (max-width:420px){ .exview-stats{ grid-template-columns:repeat(2,1fr); } }
+  .exview-stat{ background:var(--bg-sunken); border-radius:10px; padding:5px 6px; text-align:center; }
+  .exview-stat-label{ display:block; font-size:10.5px; color:var(--text-muted); margin-bottom:2px; }
+  .exview-stat-value{ display:block; font-size:13.5px; font-weight:700; font-variant-numeric:tabular-nums; }
+  .exview-note{ margin-top:6px; padding-top:6px; border-top:1px dashed var(--border); font-size:12.5px; color:var(--text-secondary); }
+  .exview-note-label{ color:var(--text-muted); margin-inline-end:4px; }
 
   /* below 700px: stacked "label / value" cards instead of a cramped wide grid — */
   /* avoids the one-word-per-line wrapping a narrow multi-column table forces */
@@ -372,374 +387,100 @@
   <div class="modal" id="modal"></div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script>
 (function(){
+
+var SUPABASE_URL = 'https://ysqdfeqzhvcsujbiiqzl.supabase.co';
+var SUPABASE_KEY = 'sb_publishable_-OJTgbTDvH1FokMidOSJDA_wBxey4P_';
+var sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+var GENDER_DB_TO_UI = {male:'גבר', female:'אישה', other:'אחר'};
+var GENDER_UI_TO_DB = {'גבר':'male', 'אישה':'female', 'אחר':'other'};
+function doctorApprovalToUi(v){ return v===true ? 'כן' : v===false ? 'לא' : ''; }
+function doctorApprovalToDb(v){ return v==='כן' ? true : v==='לא' ? false : null; }
+
+function clientFromRow(row){
+  return {
+    id: row.id, name: row.full_name, phone: row.phone, email: row.email, dob: row.date_of_birth,
+    gender: GENDER_DB_TO_UI[row.gender] || '', height: row.height_cm, photo: row.profile_photo_url,
+    goal: row.training_goal, medical: row.medical_condition, injuries: row.injuries_limitations,
+    meds: row.medications, doctorApproval: doctorApprovalToUi(row.doctor_approval),
+    emergencyName: row.emergency_contact_name, emergencyPhone: row.emergency_contact_phone,
+    trainerIds: [], measurements: [], plans: [], trainingNotes: []
+  };
+}
+function clientToRow(data){
+  return {
+    full_name: data.name, phone: data.phone||null, email: data.email||null, date_of_birth: data.dob||null,
+    gender: GENDER_UI_TO_DB[data.gender] || null, height_cm: data.height||null,
+    training_goal: data.goal||null, medical_condition: data.medical||null, injuries_limitations: data.injuries||null,
+    medications: data.meds||null, doctor_approval: doctorApprovalToDb(data.doctorApproval),
+    emergency_contact_name: data.emergencyName||null, emergency_contact_phone: data.emergencyPhone||null
+  };
+}
+function measurementFromRow(row){
+  return {
+    id: row.id, date: row.date, weight: row.weight_kg, fat: row.body_fat_percent, water: row.water_percent,
+    muscle: row.muscle_mass_kg, fatMass: row.fat_mass_kg, waist: row.waist_cm, chest: row.chest_cm,
+    arm: row.arm_cm, thigh: row.thigh_cm, notes: row.notes
+  };
+}
+function measurementToRow(data, clientId){
+  return {
+    client_id: clientId, date: data.date, weight_kg: data.weight, body_fat_percent: data.fat,
+    water_percent: data.water, muscle_mass_kg: data.muscle, fat_mass_kg: data.fatMass,
+    waist_cm: data.waist, chest_cm: data.chest, arm_cm: data.arm, thigh_cm: data.thigh, notes: data.notes||null
+  };
+}
+function planFromRow(row){
+  return { id: row.id, effectiveDate: row.effective_date, coachNotes: row.coach_notes, exercises: [] };
+}
+function exerciseFromRow(row){
+  return { name: row.exercise_name, sets: row.sets, reps: row.reps, weight: row.working_weight_kg, rest: row.rest_time, notes: row.notes };
+}
+function noteFromRow(row){
+  return { id: row.id, date: row.date, time: row.time ? row.time.slice(0,5) : '', note: row.note };
+}
+
+async function loadState(){
+  var res = await Promise.all([
+    sb.from('trainers').select('*'),
+    sb.from('clients').select('*'),
+    sb.from('client_trainers').select('*'),
+    sb.from('measurements').select('*').order('date'),
+    sb.from('training_plans').select('*').order('effective_date'),
+    sb.from('training_plan_exercises').select('*').order('order_index'),
+    sb.from('training_notes').select('*').order('date')
+  ]);
+  for(var i=0;i<res.length;i++){
+    if(res[i].error){ alert('שגיאה בטעינת נתונים מהשרת: '+res[i].error.message); throw res[i].error; }
+  }
+  var trainers = res[0].data, clientRows = res[1].data, clientTrainerRows = res[2].data,
+      measurementRows = res[3].data, planRows = res[4].data, exerciseRows = res[5].data, noteRows = res[6].data;
+
+  state.trainers = trainers.map(function(t){ return {id:t.id, name:t.full_name}; });
+
+  var clients = clientRows.map(clientFromRow);
+  clients.forEach(function(c){
+    c.trainerIds = clientTrainerRows.filter(function(ct){ return ct.client_id===c.id; }).map(function(ct){ return ct.trainer_id; });
+    c.measurements = measurementRows.filter(function(m){ return m.client_id===c.id; }).map(measurementFromRow);
+    c.plans = planRows.filter(function(p){ return p.client_id===c.id; }).map(function(p){
+      var plan = planFromRow(p);
+      plan.exercises = exerciseRows.filter(function(e){ return e.training_plan_id===p.id; }).map(exerciseFromRow);
+      return plan;
+    });
+    c.trainingNotes = noteRows.filter(function(n){ return n.client_id===c.id; }).map(noteFromRow);
+  });
+  state.clients = clients;
+}
 
 var state = {
   activeClientId: null,
   activeTab: 'overview',
   planViewVersionId: null,
-  trainers: [
-    {id:'t1', name:'יהודה הלוי'},
-    {id:'t2', name:'נועה כהן'}
-  ],
-  clients: [
-    {
-      id:'c1', name:'מיכל אברמוב', phone:'050-123-4567', email:'michal.a@example.com',
-      dob:'1990-04-12', gender:'אישה', height:165, photo:null,
-      goal:'ירידה באחוז שומן וחיטוב כללי לקראת החתונה',
-      medical:'אין רקע מיוחד', injuries:'ברך שמאל – אי נוחות בכפיפה עמוקה, להימנע מסקוואט עמוק',
-      meds:'אין', doctorApproval:'כן', emergencyName:'יוסי אברמוב', emergencyPhone:'052-765-4321',
-      trainerIds:['t1'],
-      measurements:[
-        {id:'m1', date:'2026-02-01', weight:68.4, fat:28.5, muscle:25.8, fatMass:19.5, waist:78, chest:92, arm:27, thigh:56, notes:'מדידת פתיחה'},
-        {id:'m2', date:'2026-03-01', weight:67.1, fat:27.2, muscle:26.0, fatMass:18.3, waist:76.5, chest:91.5, arm:27.2, thigh:55.2, notes:''},
-        {id:'m3', date:'2026-04-01', weight:66.0, fat:26.0, muscle:26.3, fatMass:17.2, waist:75, chest:91, arm:27.4, thigh:54.5, notes:''},
-        {id:'m4', date:'2026-05-01', weight:65.2, fat:25.1, muscle:26.6, fatMass:16.4, waist:74, chest:90.7, arm:27.6, thigh:53.8, notes:'שיפור ניכר בהיקף מותניים'},
-        {id:'m5', date:'2026-06-01', weight:64.5, fat:24.0, muscle:26.9, fatMass:15.5, waist:73, chest:90.4, arm:27.8, thigh:53.2, notes:''},
-        {id:'m6', date:'2026-07-01', weight:63.8, fat:23.2, muscle:27.1, fatMass:14.8, waist:72, chest:90, arm:28, thigh:52.8, notes:''}
-      ],
-      plans:[
-        {id:'p1', effectiveDate:'2026-02-03', coachNotes:'תוכנית פתיחה – היכרות עם התרגילים, עצימות נמוכה-בינונית.',
-          exercises:[
-            {name:'סקוואט גובלט', sets:3, reps:'12', weight:'12', rest:'60'+'"', notes:'טווח חלקי בגלל הברך'},
-            {name:'לחיצת חזה בשיפוע', sets:3, reps:'10', weight:'20', rest:'60"', notes:''},
-            {name:'חתירה בישיבה', sets:3, reps:'12', weight:'25', rest:'45"', notes:''},
-            {name:'פלאנק', sets:3, reps:'30 שנ׳', weight:'-', rest:'30"', notes:''}
-          ]},
-        {id:'p2', effectiveDate:'2026-05-05', coachNotes:'העלאת עצימות, הוספת דדליפט רומני.',
-          exercises:[
-            {name:'סקוואט גובלט', sets:4, reps:'10', weight:'16', rest:'75"', notes:'עדיין טווח חלקי'},
-            {name:'דדליפט רומני', sets:3, reps:'10', weight:'20', rest:'75"', notes:'טכניקה לפני עומס'},
-            {name:'לחיצת חזה בשיפוע', sets:4, reps:'10', weight:'24', rest:'60"', notes:''},
-            {name:'חתירה בישיבה', sets:4, reps:'12', weight:'32', rest:'60"', notes:''},
-            {name:'פלאנק', sets:3, reps:'45 שנ׳', weight:'-', rest:'30"', notes:''}
-          ]}
-      ],
-      trainingNotes:[
-        {id:'tn1', date:'2026-06-08', time:'17:30', note:'אימון טוב, עמידה יציבה יותר בדדליפט רומני.'},
-        {id:'tn2', date:'2026-06-22', time:'18:00', note:'עייפות בסוף האימון, הורדנו סט אחד בלחיצת חזה.'}
-      ]
-    },
-    {
-      id:'c2', name:'רון שגיא', phone:'054-987-6543', email:'ron.sagi@example.com',
-      dob:'1996-11-02', gender:'גבר', height:178, photo:null,
-      goal:'עלייה במסת שריר ובכוח – פוקוס על פלג גוף עליון',
-      medical:'אסטמה קלה, משתמש במשאף לפי הצורך', injuries:'אין', meds:'משאף ונטולין (לפי צורך)',
-      doctorApproval:'', emergencyName:'דנה שגיא', emergencyPhone:'050-222-3344',
-      trainerIds:['t1','t2'],
-      measurements:[
-        {id:'m1', date:'2026-02-05', weight:77.0, fat:17.0, muscle:33.5, fatMass:13.1, waist:81, chest:98, arm:33, thigh:58, notes:'מדידת פתיחה'},
-        {id:'m2', date:'2026-03-05', weight:78.4, fat:16.6, muscle:34.6, fatMass:13.0, waist:81.5, chest:99, arm:33.6, thigh:58.6, notes:''},
-        {id:'m3', date:'2026-04-05', weight:79.8, fat:16.2, muscle:35.8, fatMass:12.9, waist:82, chest:100, arm:34.2, thigh:59.1, notes:''},
-        {id:'m4', date:'2026-05-05', weight:80.9, fat:15.8, muscle:36.9, fatMass:12.8, waist:82.5, chest:101, arm:34.8, thigh:59.6, notes:''},
-        {id:'m5', date:'2026-06-05', weight:82.0, fat:15.5, muscle:37.9, fatMass:12.7, waist:83, chest:102, arm:35.3, thigh:60, notes:'שיא אישי בלחיצת חזה'},
-        {id:'m6', date:'2026-07-05', weight:83.1, fat:15.2, muscle:38.8, fatMass:12.6, waist:83.4, chest:103, arm:35.8, thigh:60.4, notes:''}
-      ],
-      plans:[
-        {id:'p1', effectiveDate:'2026-07-06', coachNotes:'מחזור נפח – פוקוס פלג גוף עליון, 2 ימי רגליים לשמירה.',
-          exercises:[
-            {name:'לחיצת חזה במוט', sets:4, reps:'8', weight:'70', rest:'120"', notes:''},
-            {name:'מתח אחיזה רחבה', sets:4, reps:'8', weight:'גוף+5', rest:'120"', notes:''},
-            {name:'לחיצת כתפיים בישיבה', sets:3, reps:'10', weight:'40', rest:'90"', notes:''},
-            {name:'דדליפט', sets:3, reps:'6', weight:'110', rest:'150"', notes:'לבדוק טכניקה בסט אחרון'},
-            {name:'כפיפת מרפק במוט', sets:3, reps:'10', weight:'30', rest:'60"', notes:''}
-          ]}
-      ]
-    },
-    {
-      id:'c3', name:'יוסי מזרחי', phone:'052-345-6789', email:'yossi.mizrahi@example.com',
-      dob:'1985-03-20', gender:'גבר', photo:null,
-      goal:'בניית כוח כללי ומסת שריר, שיפור בריאות לטווח ארוך',
-      medical:'אין רקע מיוחד', injuries:'אין', meds:'אין', doctorApproval:'כן',
-      emergencyName:'ענת מזרחי', emergencyPhone:'050-345-1234',
-      trainerIds:['t1'],
-      measurements:[
-        {id:'m1', date:'2024-08-01', weight:92, fat:22, muscle:30, fatMass:20.2, waist:96, chest:104, arm:36, thigh:60, notes:'מדידת פתיחה'},
-        {id:'m2', date:'2024-11-01', weight:91, fat:21, muscle:31, fatMass:19.1, waist:94, chest:105, arm:36.5, thigh:60.5, notes:''},
-        {id:'m3', date:'2025-02-01', weight:90.5, fat:20, muscle:32, fatMass:18.1, waist:93, chest:106, arm:37, thigh:61, notes:''},
-        {id:'m4', date:'2025-05-01', weight:90, fat:19, muscle:33, fatMass:17.1, waist:92, chest:107, arm:37.5, thigh:61.5, notes:''},
-        {id:'m5', date:'2025-08-01', weight:89.5, fat:18.2, muscle:34, fatMass:16.3, waist:91, chest:108, arm:38, thigh:62, notes:'שיא אישי בסקוואט'},
-        {id:'m6', date:'2025-11-01', weight:89, fat:17.5, muscle:34.8, fatMass:15.6, waist:90, chest:109, arm:38.3, thigh:62.3, notes:''},
-        {id:'m7', date:'2026-03-01', weight:88.7, fat:17, muscle:35.3, fatMass:15.1, waist:89.5, chest:109.5, arm:38.6, thigh:62.6, notes:''},
-        {id:'m8', date:'2026-07-01', weight:88.5, fat:16.5, muscle:35.8, fatMass:14.6, waist:89, chest:110, arm:39, thigh:63, notes:''}
-      ],
-      plans:[
-        {id:'p1', effectiveDate:'2024-08-03', coachNotes:'תוכנית פתיחה – בניית בסיס טכני.',
-          exercises:[
-            {name:'סקוואט', sets:3, reps:'10', weight:'40', rest:'90"', notes:''},
-            {name:'לחיצת חזה', sets:3, reps:'10', weight:'40', rest:'90"', notes:''},
-            {name:'חתירה בכבל', sets:3, reps:'12', weight:'35', rest:'60"', notes:''}
-          ]},
-        {id:'p2', effectiveDate:'2025-03-10', coachNotes:'מעבר לשלב בינוני – הוספת נפח ותרגילי מורכבים.',
-          exercises:[
-            {name:'סקוואט', sets:4, reps:'8', weight:'70', rest:'120"', notes:''},
-            {name:'לחיצת חזה במוט', sets:4, reps:'8', weight:'65', rest:'120"', notes:''},
-            {name:'דדליפט', sets:3, reps:'6', weight:'90', rest:'150"', notes:''},
-            {name:'מתח', sets:3, reps:'8', weight:'גוף', rest:'90"', notes:''}
-          ]},
-        {id:'p3', effectiveDate:'2026-04-01', coachNotes:'מחזור כוח – עצימות גבוהה, נפח מבוקר.',
-          exercises:[
-            {name:'סקוואט', sets:5, reps:'5', weight:'100', rest:'150"', notes:'להעלות בהדרגה'},
-            {name:'לחיצת חזה במוט', sets:5, reps:'5', weight:'85', rest:'150"', notes:''},
-            {name:'דדליפט', sets:4, reps:'5', weight:'120', rest:'180"', notes:''},
-            {name:'מתח עם משקל נוסף', sets:4, reps:'6', weight:'גוף+10', rest:'120"', notes:''}
-          ]}
-      ]
-    },
-    {
-      id:'c4', name:'שירה לוי', phone:'053-222-1198', email:'shira.levi@example.com',
-      dob:'2003-09-14', gender:'אישה', photo:null,
-      goal:'ירידה במשקל והיכרות עם חדר הכושר',
-      medical:'אין רקע מיוחד', injuries:'אין', meds:'אין', doctorApproval:'',
-      emergencyName:'רונית לוי', emergencyPhone:'054-222-1199',
-      trainerIds:['t2'],
-      measurements:[
-        {id:'m1', date:'2026-07-10', weight:71, fat:32, muscle:23, fatMass:22.7, waist:82, chest:89, arm:26, thigh:57, notes:'מדידת פתיחה'}
-      ],
-      plans:[
-        {id:'p1', effectiveDate:'2026-07-12', coachNotes:'תוכנית פתיחה – היכרות עם המכשירים והתרגילים הבסיסיים.',
-          exercises:[
-            {name:'סקוואט לספסל', sets:3, reps:'12', weight:'גוף', rest:'60"', notes:''},
-            {name:'לחיצת חזה בישיבה במכונה', sets:3, reps:'12', weight:'15', rest:'60"', notes:''},
-            {name:'חתירה בישיבה', sets:3, reps:'12', weight:'20', rest:'60"', notes:''},
-            {name:'הליכה על הליכון', sets:1, reps:'20 דק׳', weight:'-', rest:'-', notes:'קצב בינוני'}
-          ]}
-      ]
-    },
-    {
-      id:'c5', name:'אברהם כהן', phone:'050-777-2233', email:'avraham.cohen@example.com',
-      dob:'1958-01-09', gender:'גבר', photo:null,
-      goal:'שיקום תפקודי ושיפור ניידות יומיומית',
-      medical:'לחץ דם גבוה מאוזן בתרופות', injuries:'ניתוח החלפת ברך ימין לפני כשנתיים – הגבלה בכריעה עמוקה',
-      meds:'תרופה להורדת לחץ דם', doctorApproval:'כן',
-      emergencyName:'שרה כהן', emergencyPhone:'052-777-4455',
-      trainerIds:['t1'],
-      measurements:[
-        {id:'m1', date:'2026-06-01', weight:84, fat:26, muscle:29, fatMass:21.8, waist:98, chest:100, arm:31, thigh:56, notes:'מדידת פתיחה'},
-        {id:'m2', date:'2026-07-15', weight:83.4, fat:25.5, muscle:29.2, fatMass:21.3, waist:97, chest:100, arm:31, thigh:56.2, notes:''}
-      ],
-      plans:[
-        {id:'p1', effectiveDate:'2026-06-03', coachNotes:'תוכנית עדינה – חיזוק שרירי הליבה ותמיכה סביב הברך, ללא כריעה עמוקה.',
-          exercises:[
-            {name:'סקוואט חלקי לכיסא', sets:3, reps:'10', weight:'גוף', rest:'90"', notes:'טווח חלקי בלבד'},
-            {name:'הרמת רגל ישרה בשכיבה', sets:3, reps:'12', weight:'-', rest:'60"', notes:'חיזוק הברך'},
-            {name:'חתירה בישיבה', sets:3, reps:'10', weight:'15', rest:'60"', notes:''},
-            {name:'הליכה על הליכון', sets:1, reps:'15 דק׳', weight:'-', rest:'-', notes:'קצב איטי-בינוני'}
-          ]}
-      ]
-    },
-    {
-      id:'c6', name:'רבקה פרידמן', phone:'054-333-8871', email:'rivka.friedman@example.com',
-      dob:'1954-06-22', gender:'אישה', photo:null,
-      goal:'חיזוק עצמות ושרירים ומניעת נפילות',
-      medical:'אוסטאופורוזיס קלה', injuries:'אין', meds:'תוסף סידן וויטמין D', doctorApproval:'כן',
-      emergencyName:'דוד פרידמן', emergencyPhone:'050-333-2244',
-      trainerIds:['t2'],
-      measurements:[
-        {id:'m1', date:'2023-09-01', weight:66, fat:34, muscle:22, fatMass:22.4, waist:88, chest:92, arm:24, thigh:52, notes:'מדידת פתיחה'},
-        {id:'m2', date:'2024-01-01', weight:65.5, fat:33, muscle:22.6, fatMass:21.6, waist:87, chest:92, arm:24.3, thigh:52.3, notes:''},
-        {id:'m3', date:'2024-06-01', weight:65, fat:32, muscle:23.2, fatMass:20.8, waist:86, chest:91.5, arm:24.6, thigh:52.6, notes:''},
-        {id:'m4', date:'2025-01-01', weight:64.5, fat:31, muscle:23.8, fatMass:20, waist:85, chest:91, arm:25, thigh:53, notes:''},
-        {id:'m5', date:'2025-08-01', weight:64.2, fat:30, muscle:24.3, fatMass:19.3, waist:84.5, chest:90.8, arm:25.3, thigh:53.3, notes:''},
-        {id:'m6', date:'2026-07-01', weight:64, fat:29, muscle:24.8, fatMass:18.6, waist:84, chest:90.5, arm:25.6, thigh:53.6, notes:''}
-      ],
-      plans:[
-        {id:'p1', effectiveDate:'2023-09-05', coachNotes:'תוכנית עדינה – שיווי משקל וחיזוק בסיסי.',
-          exercises:[
-            {name:'עמידה על רגל אחת', sets:3, reps:'20 שנ׳', weight:'-', rest:'30"', notes:'תמיכה בקיר'},
-            {name:'סקוואט לכיסא', sets:3, reps:'10', weight:'גוף', rest:'60"', notes:''},
-            {name:'חתירה בגומיה', sets:3, reps:'12', weight:'-', rest:'45"', notes:''}
-          ]},
-        {id:'p2', effectiveDate:'2025-02-01', coachNotes:'העלאת עצימות בזהירות – משקולות קלות ורצועות התנגדות.',
-          exercises:[
-            {name:'סקוואט עם משקולת קלה', sets:3, reps:'10', weight:'4', rest:'60"', notes:''},
-            {name:'לחיצת חזה בשכיבה', sets:3, reps:'10', weight:'6', rest:'60"', notes:''},
-            {name:'חתירה בגומיה', sets:3, reps:'15', weight:'-', rest:'45"', notes:''},
-            {name:'עמידה על רגל אחת', sets:3, reps:'30 שנ׳', weight:'-', rest:'30"', notes:'ללא תמיכה'}
-          ]}
-      ]
-    },
-    {
-      id:'c7', name:'עידן ברק', phone:'058-444-9012', email:'idan.barak@example.com',
-      dob:'2005-05-30', gender:'גבר', photo:null,
-      goal:'שיפור ביצועים אתלטיים לקראת תחרויות',
-      medical:'אין רקע מיוחד', injuries:'נקע קרסול ישן – מתחזק באופן קבוע', meds:'אין', doctorApproval:'כן',
-      emergencyName:'מירי ברק', emergencyPhone:'052-444-5566',
-      trainerIds:['t1'],
-      measurements:[
-        {id:'m1', date:'2023-10-01', weight:68, fat:14, muscle:34, fatMass:9.5, waist:75, chest:92, arm:30, thigh:54, notes:'מדידת פתיחה'},
-        {id:'m2', date:'2024-04-01', weight:70, fat:13, muscle:36, fatMass:9.1, waist:74, chest:94, arm:31, thigh:55.5, notes:''},
-        {id:'m3', date:'2024-10-01', weight:72, fat:12, muscle:38, fatMass:8.6, waist:73.5, chest:96, arm:32, thigh:57, notes:''},
-        {id:'m4', date:'2025-04-01', weight:73.5, fat:11, muscle:39.5, fatMass:8.1, waist:73, chest:98, arm:33, thigh:58, notes:'שיפור ניכר בזמן ספרינט'},
-        {id:'m5', date:'2025-10-01', weight:75, fat:10.5, muscle:41, fatMass:7.9, waist:72.5, chest:100, arm:34, thigh:59, notes:''},
-        {id:'m6', date:'2026-07-01', weight:76, fat:10, muscle:42, fatMass:7.6, waist:72, chest:101, arm:34.8, thigh:60, notes:''}
-      ],
-      plans:[
-        {id:'p1', effectiveDate:'2023-10-03', coachNotes:'תוכנית בסיס אתלטית – טכניקה וכוח כללי.',
-          exercises:[
-            {name:'סקוואט', sets:4, reps:'8', weight:'50', rest:'90"', notes:''},
-            {name:'ספרינטים קצרים', sets:6, reps:'30 מ׳', weight:'-', rest:'90"', notes:''},
-            {name:'קפיצות תיבה', sets:4, reps:'6', weight:'-', rest:'60"', notes:''}
-          ]},
-        {id:'p2', effectiveDate:'2024-11-01', coachNotes:'שלב ביניים – הוספת עומסים ותרגילי פליומטריה.',
-          exercises:[
-            {name:'סקוואט', sets:5, reps:'6', weight:'80', rest:'120"', notes:''},
-            {name:'דדליפט רומני', sets:4, reps:'8', weight:'60', rest:'90"', notes:''},
-            {name:'קפיצות תיבה', sets:5, reps:'6', weight:'-', rest:'60"', notes:'גובה מוגבר'},
-            {name:'ספרינטים', sets:8, reps:'40 מ׳', weight:'-', rest:'90"', notes:''}
-          ]},
-        {id:'p3', effectiveDate:'2026-01-05', coachNotes:'מחזור עוצמה והתפרצות – הכנה לתחרות.',
-          exercises:[
-            {name:'סקוואט קפיצה', sets:5, reps:'5', weight:'20', rest:'120"', notes:''},
-            {name:'דדליפט', sets:5, reps:'4', weight:'110', rest:'150"', notes:''},
-            {name:'ספרינטים', sets:10, reps:'30 מ׳', weight:'-', rest:'120"', notes:'עצימות מקסימלית'},
-            {name:'קפיצות תיבה', sets:5, reps:'5', weight:'-', rest:'60"', notes:'גובה מירבי'}
-          ]}
-      ]
-    },
-    {
-      id:'c8', name:'נועה שני', phone:'050-666-3345', email:'noa.shani@example.com',
-      dob:'1980-12-11', gender:'אישה', photo:null,
-      goal:'ירידה במשקל וחיטוב תוך שמירה על איזון רמות סוכר',
-      medical:'סוכרת סוג 2 מאוזנת בתרופות', injuries:'אין', meds:'מטפורמין', doctorApproval:'כן',
-      emergencyName:'אלון שני', emergencyPhone:'054-666-7788',
-      trainerIds:['t2'],
-      measurements:[
-        {id:'m1', date:'2024-03-01', weight:79, fat:36, muscle:24, fatMass:28.4, waist:94, chest:98, arm:28, thigh:58, notes:'מדידת פתיחה'},
-        {id:'m2', date:'2024-09-01', weight:77, fat:34, muscle:24.8, fatMass:26.2, waist:92, chest:97, arm:28.3, thigh:57.3, notes:''},
-        {id:'m3', date:'2025-03-01', weight:75, fat:32, muscle:25.5, fatMass:24, waist:90, chest:96, arm:28.6, thigh:56.6, notes:''},
-        {id:'m4', date:'2025-09-01', weight:73.5, fat:30, muscle:26.2, fatMass:22.1, waist:88, chest:95, arm:29, thigh:56, notes:'ירידה יציבה, רמות סוכר משתפרות'},
-        {id:'m5', date:'2026-07-01', weight:72, fat:28.5, muscle:27, fatMass:20.5, waist:86, chest:94.5, arm:29.3, thigh:55.5, notes:''}
-      ],
-      plans:[
-        {id:'p1', effectiveDate:'2024-03-05', coachNotes:'תוכנית פתיחה – שילוב אירובי והתנגדות קלה.',
-          exercises:[
-            {name:'הליכה על הליכון', sets:1, reps:'25 דק׳', weight:'-', rest:'-', notes:''},
-            {name:'סקוואט לספסל', sets:3, reps:'12', weight:'גוף', rest:'60"', notes:''},
-            {name:'חתירה בישיבה', sets:3, reps:'12', weight:'20', rest:'60"', notes:''}
-          ]},
-        {id:'p2', effectiveDate:'2025-04-01', coachNotes:'הגברת עצימות – יותר התנגדות, פחות אירובי ממושך.',
-          exercises:[
-            {name:'סקוואט', sets:3, reps:'12', weight:'20', rest:'60"', notes:''},
-            {name:'לחיצת חזה בשיפוע', sets:3, reps:'10', weight:'16', rest:'60"', notes:''},
-            {name:'חתירה בישיבה', sets:3, reps:'12', weight:'30', rest:'60"', notes:''},
-            {name:'אינטרוולים על אופני כושר', sets:1, reps:'15 דק׳', weight:'-', rest:'-', notes:'לפי הנחיית המאמנת'}
-          ]}
-      ]
-    },
-    {
-      id:'c9', name:'תומר וקנין', phone:'052-888-4456', email:'tomer.vaknin@example.com',
-      dob:'2000-02-17', gender:'גבר', photo:null,
-      goal:'חיזוק פלג גוף עליון וליבה ושיפור תפקוד יומיומי',
-      medical:'פגיעת חוט שדרה – שיתוק חלקי ברגליים, משתמש בכיסא גלגלים', injuries:'אין נוסף על הרקע הרפואי',
-      meds:'אין', doctorApproval:'כן – אישור מהרופא המטפל',
-      emergencyName:'איילת וקנין', emergencyPhone:'050-888-1122',
-      trainerIds:['t1'],
-      measurements:[
-        {id:'m1', date:'2025-11-01', weight:70, fat:24, muscle:30, fatMass:16.8, waist:84, chest:96, arm:33, thigh:54, notes:'מדידת פתיחה'},
-        {id:'m2', date:'2026-03-01', weight:71, fat:22.5, muscle:31.5, fatMass:16, waist:83, chest:98, arm:34.5, thigh:54.2, notes:''},
-        {id:'m3', date:'2026-07-01', weight:71.5, fat:21, muscle:33, fatMass:15, waist:82, chest:100, arm:36, thigh:54.4, notes:'שיפור ניכר בכוח פלג גוף עליון'}
-      ],
-      plans:[
-        {id:'p1', effectiveDate:'2025-11-05', coachNotes:'תוכנית ישיבה – פוקוס פלג גוף עליון וליבה.',
-          exercises:[
-            {name:'לחיצת חזה בישיבה במכונה', sets:3, reps:'12', weight:'20', rest:'60"', notes:''},
-            {name:'חתירה בישיבה', sets:3, reps:'12', weight:'25', rest:'60"', notes:''},
-            {name:'לחיצת כתפיים בישיבה', sets:3, reps:'10', weight:'12', rest:'60"', notes:''},
-            {name:'סיבובי גזע בישיבה', sets:3, reps:'15', weight:'-', rest:'45"', notes:'חיזוק ליבה'}
-          ]},
-        {id:'p2', effectiveDate:'2026-04-01', coachNotes:'הגברת עומסים – התקדמות טובה בכוח עליון.',
-          exercises:[
-            {name:'לחיצת חזה בישיבה במכונה', sets:4, reps:'10', weight:'30', rest:'75"', notes:''},
-            {name:'חתירה בישיבה', sets:4, reps:'10', weight:'35', rest:'75"', notes:''},
-            {name:'לחיצת כתפיים בישיבה', sets:3, reps:'10', weight:'16', rest:'60"', notes:''},
-            {name:'דחיקת טריצפס בכבל', sets:3, reps:'12', weight:'15', rest:'45"', notes:''},
-            {name:'סיבובי גזע בישיבה', sets:3, reps:'20', weight:'-', rest:'45"', notes:''}
-          ]}
-      ]
-    },
-    {
-      id:'c10', name:'דנה אשכנזי', phone:'054-999-5567', email:'dana.ashkenazi@example.com',
-      dob:'1992-08-05', gender:'אישה', photo:null,
-      goal:'חיזוק רצפת אגן ושיקום שרירי הליבה לאחר לידה',
-      medical:'דיאסטזיס רקטיס קל (הפרדת שרירי בטן לאחר לידה, לפני כ-4 חודשים)', injuries:'אין',
-      meds:'אין', doctorApproval:'כן – אישור מרופא נשים',
-      emergencyName:'עומר אשכנזי', emergencyPhone:'052-999-2233',
-      trainerIds:['t2'],
-      measurements:[
-        {id:'m1', date:'2026-05-15', weight:68, fat:30, muscle:23, fatMass:20.4, waist:82, chest:90, arm:26, thigh:56, notes:'מדידת פתיחה'},
-        {id:'m2', date:'2026-07-10', weight:66.5, fat:28.5, muscle:23.8, fatMass:19, waist:79, chest:89.5, arm:26.2, thigh:55.5, notes:''}
-      ],
-      plans:[
-        {id:'p1', effectiveDate:'2026-05-18', coachNotes:'שיקום עדין – רצפת אגן, נשימה וליבה, ללא לחץ תוך-בטני גבוה.',
-          exercises:[
-            {name:'נשימת סרעפת בשכיבה', sets:3, reps:'10 נשימות', weight:'-', rest:'30"', notes:''},
-            {name:'הטיית אגן בשכיבה', sets:3, reps:'12', weight:'-', rest:'30"', notes:''},
-            {name:'גשר אגן', sets:3, reps:'10', weight:'-', rest:'45"', notes:'ללא כאב באזור הבטן'},
-            {name:'הליכה קלה', sets:1, reps:'20 דק׳', weight:'-', rest:'-', notes:''}
-          ]}
-      ]
-    },
-    {
-      id:'c11', name:'משה גולן', phone:'050-111-6678', email:'moshe.golan@example.com',
-      dob:'1950-04-02', gender:'גבר', photo:null,
-      goal:'שימור מסת שריר, כוח תפקודי ועצמאות בגיל השלישי',
-      medical:'לחץ דם גבוה מאוזן בתרופות', injuries:'אין', meds:'תרופה להורדת לחץ דם', doctorApproval:'כן',
-      emergencyName:'רחל גולן', emergencyPhone:'052-111-3344',
-      trainerIds:['t1','t2'],
-      measurements:[
-        {id:'m1', date:'2021-06-01', weight:80, fat:24, muscle:28, fatMass:19.2, waist:96, chest:98, arm:30, thigh:54, notes:'מדידת פתיחה'},
-        {id:'m2', date:'2022-06-01', weight:79, fat:23, muscle:28.6, fatMass:18.2, waist:95, chest:98.5, arm:30.3, thigh:54.3, notes:''},
-        {id:'m3', date:'2023-06-01', weight:78.5, fat:22.5, muscle:29, fatMass:17.7, waist:94.5, chest:99, arm:30.5, thigh:54.5, notes:''},
-        {id:'m4', date:'2024-06-01', weight:78, fat:22, muscle:29.3, fatMass:17.2, waist:94, chest:99.2, arm:30.7, thigh:54.7, notes:''},
-        {id:'m5', date:'2025-06-01', weight:77.5, fat:21.7, muscle:29.5, fatMass:16.8, waist:93.5, chest:99.4, arm:30.8, thigh:54.8, notes:''},
-        {id:'m6', date:'2026-07-01', weight:77, fat:21.5, muscle:29.7, fatMass:16.6, waist:93, chest:99.5, arm:31, thigh:55, notes:'יציב, ממשיך לשמור על הכוח'}
-      ],
-      plans:[
-        {id:'p1', effectiveDate:'2021-06-05', coachNotes:'תוכנית פתיחה – חיזוק כללי ושיווי משקל.',
-          exercises:[
-            {name:'סקוואט לכיסא', sets:3, reps:'10', weight:'גוף', rest:'60"', notes:''},
-            {name:'לחיצת חזה בישיבה', sets:3, reps:'10', weight:'10', rest:'60"', notes:''},
-            {name:'חתירה בישיבה', sets:3, reps:'12', weight:'15', rest:'60"', notes:''}
-          ]},
-        {id:'p2', effectiveDate:'2023-07-01', coachNotes:'המשך התקדמות מתונה – שמירה על עומס יציב.',
-          exercises:[
-            {name:'סקוואט', sets:3, reps:'10', weight:'20', rest:'75"', notes:''},
-            {name:'לחיצת חזה בישיבה', sets:3, reps:'10', weight:'14', rest:'75"', notes:''},
-            {name:'חתירה בישיבה', sets:3, reps:'12', weight:'22', rest:'60"', notes:''},
-            {name:'עמידה על רגל אחת', sets:3, reps:'20 שנ׳', weight:'-', rest:'30"', notes:''}
-          ]},
-        {id:'p3', effectiveDate:'2025-08-01', coachNotes:'תחזוקה – שמירה על מסת שריר וטווחי תנועה, עצימות מתונה.',
-          exercises:[
-            {name:'סקוואט', sets:3, reps:'10', weight:'22', rest:'75"', notes:''},
-            {name:'לחיצת חזה בישיבה', sets:3, reps:'10', weight:'16', rest:'75"', notes:''},
-            {name:'חתירה בישיבה', sets:3, reps:'12', weight:'24', rest:'60"', notes:''},
-            {name:'הליכה על הליכון', sets:1, reps:'15 דק׳', weight:'-', rest:'-', notes:'קצב נוח'}
-          ]}
-      ]
-    },
-    {
-      id:'c12', name:'ליאור בן דוד', phone:'053-777-8890', email:'lior.bendavid@example.com',
-      dob:'1999-10-27', gender:'אחר', photo:null,
-      goal:'כושר גופני כללי והיכרות עם עולם האימונים',
-      medical:'אין רקע מיוחד', injuries:'אין', meds:'אין', doctorApproval:'',
-      emergencyName:'טל בן דוד', emergencyPhone:'050-777-4411',
-      trainerIds:['t2'],
-      measurements:[
-        {id:'m1', date:'2026-07-18', weight:74, fat:22, muscle:30, fatMass:16.3, waist:84, chest:96, arm:29, thigh:56, notes:'מדידת פתיחה'}
-      ],
-      plans:[
-        {id:'p1', effectiveDate:'2026-07-20', coachNotes:'תוכנית פתיחה – היכרות עם תרגילי בסיס.',
-          exercises:[
-            {name:'סקוואט', sets:3, reps:'12', weight:'גוף', rest:'60"', notes:''},
-            {name:'לחיצת חזה בשכיבה', sets:3, reps:'10', weight:'15', rest:'60"', notes:''},
-            {name:'חתירה בישיבה', sets:3, reps:'12', weight:'20', rest:'60"', notes:''},
-            {name:'פלאנק', sets:3, reps:'20 שנ׳', weight:'-', rest:'30"', notes:''}
-          ]}
-      ]
-    }
-  ]
+  trainers: [],
+  clients: [],
 };
 
 var $ = function(sel, root){ return (root||document).querySelector(sel); };
@@ -755,8 +496,9 @@ function bmiValue(client){
   var last = client.measurements[client.measurements.length-1];
   return last ? bmiFor(client, last.weight) : null;
 }
-function fmt(n){ return (Math.round(n*10)/10).toString(); }
+function fmt(n){ return (n===undefined||n===null||isNaN(n)) ? '—' : (Math.round(n*10)/10).toString(); }
 function fmtDate(d){
+  if(!d) return '—';
   var parts = d.split('-');
   return parts[2]+'.'+parts[1]+'.'+parts[0].slice(2);
 }
@@ -791,6 +533,7 @@ function renderRail(filter){
         state.activeClientId = c.id;
         state.activeTab = 'overview';
         state.planViewVersionId = null;
+        state.trainingNotesExpanded = false;
         $('#shell').setAttribute('data-view', 'detail');
         history.pushState({view:'detail', clientId:c.id}, '', location.href);
         renderAll();
@@ -912,7 +655,8 @@ function renderMiniChart(container, points, opts){
 var METRICS = [
   {key:'weight', label:'משקל', unit:' ק"ג', goodDir:null},
   {key:'fat', label:'אחוז שומן', unit:'%', goodDir:'down'},
-  {key:'muscle', label:'מסת שריר', unit:' ק"ג', goodDir:'up'}
+  {key:'muscle', label:'מסת שריר', unit:' ק"ג', goodDir:'up'},
+  {key:'water', label:'אחוז נוזלים', unit:'%', goodDir:null}
 ];
 
 function metricDelta(client, key, goodDir){
@@ -994,8 +738,10 @@ function renderMain(){
   $('[data-panel="'+state.activeTab+'"]', main).classList.add('active');
 
   $('#btnEditClient').addEventListener('click', function(){ openClientForm(client); });
-  $('#btnDeleteClient').addEventListener('click', function(){
+  $('#btnDeleteClient').addEventListener('click', async function(){
     if(confirm('למחוק את '+client.name+' וכל ההיסטוריה שלו? פעולה זו בלתי הפיכה.')){
+      var res = await sb.from('clients').delete().eq('id', client.id);
+      if(res.error){ alert('שגיאה במחיקת הלקוח: '+res.error.message); return; }
       state.clients = state.clients.filter(function(c){ return c.id!==client.id; });
       state.activeClientId = null;
       history.back();
@@ -1053,7 +799,7 @@ function renderMeasurementsPanel(panel, client){
         '<button class="btn btn-accent btn-sm" id="btnNewMeasurement">+ מדידה חדשה</button>'+
       '</div>'+
       '<div class="table-scroll"><table class="data card-rows"><thead><tr>'+
-        '<th>תאריך</th><th>משקל</th><th>BMI</th><th>% שומן</th><th>מסת שריר</th><th>מסת שומן</th>'+
+        '<th>תאריך</th><th>משקל</th><th>BMI</th><th>% שומן</th><th>% נוזלים</th><th>מסת שריר</th><th>מסת שומן</th>'+
         '<th>מותניים</th><th>חזה</th><th>זרוע</th><th>ירך</th><th>הערות</th><th></th>'+
       '</tr></thead><tbody id="measureRows"></tbody></table></div>'+
     '</div>';
@@ -1068,6 +814,7 @@ function renderMeasurementsPanel(panel, client){
     tr.innerHTML =
       '<td data-label="תאריך">'+fmtDate(m.date)+'</td><td data-label="משקל">'+fmt(m.weight)+'</td>'+
       '<td data-label="BMI">'+(bmi?fmt(bmi):'—')+'</td><td data-label="% שומן">'+fmt(m.fat)+'</td>'+
+      '<td data-label="% נוזלים">'+fmt(m.water)+'</td>'+
       '<td data-label="מסת שריר">'+fmt(m.muscle)+'</td><td data-label="מסת שומן">'+fmt(m.fatMass)+'</td>'+
       '<td data-label="מותניים">'+fmt(m.waist)+'</td><td data-label="חזה">'+fmt(m.chest)+'</td>'+
       '<td data-label="זרוע">'+fmt(m.arm)+'</td><td data-label="ירך">'+fmt(m.thigh)+'</td>'+
@@ -1081,8 +828,10 @@ function renderMeasurementsPanel(panel, client){
     });
   });
   $$('[data-del]', rows).forEach(function(b){
-    b.addEventListener('click', function(){
+    b.addEventListener('click', async function(){
       if(confirm('למחוק את המדידה מתאריך '+fmtDate(client.measurements.find(function(m){return m.id===b.dataset.del;}).date)+'?')){
+        var res = await sb.from('measurements').delete().eq('id', b.dataset.del);
+        if(res.error){ alert('שגיאה במחיקת המדידה: '+res.error.message); return; }
         client.measurements = client.measurements.filter(function(m){ return m.id!==b.dataset.del; });
         renderMain();
       }
@@ -1091,9 +840,25 @@ function renderMeasurementsPanel(panel, client){
   $('#btnNewMeasurement', panel).addEventListener('click', function(){ openMeasurementForm(client, null); });
 }
 
+/* a training note belongs to whichever plan version was in effect on its date — */
+/* the version's effectiveDate up to (not including) the next version's effectiveDate, or open-ended for the latest */
+function notesForPlanVersion(client, sortedPlans, viewing){
+  var idx = sortedPlans.findIndex(function(p){ return p.id===viewing.id; });
+  var upperBound = idx > 0 ? sortedPlans[idx-1].effectiveDate : null;
+  return (client.trainingNotes||[]).filter(function(n){
+    return n.date >= viewing.effectiveDate && (upperBound===null || n.date < upperBound);
+  });
+}
+
 function renderPlanPanel(panel, client){
   var sorted = client.plans.slice().sort(function(a,b){ return a.effectiveDate<b.effectiveDate?1:-1; });
   var current = sorted[0];
+  if(!current){
+    panel.innerHTML = '<div class="card"><div class="empty-state"><h2>אין עדיין תוכנית אימון</h2><p>צרו גרסה ראשונה כדי להתחיל.</p>'+
+      '<button class="btn btn-accent btn-sm" id="btnNewPlan" style="margin-top:10px;">+ גרסה חדשה</button></div></div>';
+    $('#btnNewPlan', panel).addEventListener('click', function(){ openPlanForm(client, null); });
+    return;
+  }
   var viewing = state.planViewVersionId ? client.plans.find(function(p){return p.id===state.planViewVersionId;}) : current;
   var isHistory = viewing && viewing.id !== current.id;
 
@@ -1104,24 +869,6 @@ function renderPlanPanel(panel, client){
   panel.innerHTML =
     (isHistory ? '<div class="plan-banner">צופה בגרסה היסטורית מתאריך '+fmtDate(viewing.effectiveDate)+' (לקריאה בלבד)<button class="btn btn-sm" id="btnBackCurrent">חזרה לתוכנית הנוכחית</button></div>' : '')+
     '<div class="card">'+
-      '<div class="plan-meta">'+
-        '<div><h3>תוכנית בתוקף מ־'+fmtDate(viewing.effectiveDate)+'</h3><div class="profile-goal">'+(viewing.coachNotes||'')+'</div></div>'+
-        '<div style="display:flex;gap:8px;align-items:center;">'+
-          '<select class="select" id="versionSelect">'+optionsHtml+'</select>'+
-          (isHistory ? '' : '<button class="btn btn-sm" id="btnEditPlan">עריכת גרסה</button><button class="btn btn-accent btn-sm" id="btnNewPlan">+ גרסה חדשה</button>')+
-        '</div>'+
-      '</div>'+
-      '<div class="table-scroll"><table class="data card-rows"><thead><tr>'+
-        '<th>תרגיל</th><th>סטים</th><th>חזרות</th><th>משקל</th><th>מנוחה</th><th>הערות</th>'+
-      '</tr></thead><tbody>'+
-      viewing.exercises.map(function(ex){
-        return '<tr><td data-label="תרגיל">'+ex.name+'</td><td data-label="סטים">'+ex.sets+'</td>'+
-          '<td data-label="חזרות">'+ex.reps+'</td><td data-label="משקל">'+ex.weight+'</td>'+
-          '<td data-label="מנוחה">'+ex.rest+'</td><td class="wrap-value" data-label="הערות">'+(ex.notes||'—')+'</td></tr>';
-      }).join('')+
-      '</tbody></table></div>'+
-    '</div>'+
-    '<div class="card" style="margin-top:16px;">'+
       '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px;">'+
         '<div class="section-title" style="margin:0;">הערות אימון</div>'+
         '<button class="btn btn-accent btn-sm" id="btnNewTrainingNote">+ הערה חדשה</button>'+
@@ -1129,31 +876,61 @@ function renderPlanPanel(panel, client){
       '<div class="table-scroll"><table class="data card-rows"><thead><tr>'+
         '<th>תאריך</th><th>שעה</th><th>הערה</th><th></th>'+
       '</tr></thead><tbody id="trainingNoteRows"></tbody></table></div>'+
+      '<div id="trainingNotesToggle" style="margin-top:10px;text-align:center;"></div>'+
+    '</div>'+
+    '<div class="card" style="margin-top:16px;">'+
+      '<div class="plan-meta">'+
+        '<div><h3>תוכנית בתוקף מ־'+fmtDate(viewing.effectiveDate)+'</h3><div class="profile-goal">'+(viewing.coachNotes||'')+'</div></div>'+
+        '<div style="display:flex;gap:8px;align-items:center;">'+
+          '<select class="select" id="versionSelect">'+optionsHtml+'</select>'+
+          (isHistory ? '' : '<button class="btn btn-sm" id="btnEditPlan">עריכת גרסה</button><button class="btn btn-accent btn-sm" id="btnNewPlan">+ גרסה חדשה</button>')+
+        '</div>'+
+      '</div>'+
+      '<div class="exview-list">'+
+      viewing.exercises.map(function(ex){
+        return '<div class="exview-card">'+
+          '<div class="exview-name">'+ex.name+'</div>'+
+          '<div class="exview-stats">'+
+            '<div class="exview-stat"><span class="exview-stat-label">סטים</span><span class="exview-stat-value">'+ex.sets+'</span></div>'+
+            '<div class="exview-stat"><span class="exview-stat-label">חזרות</span><span class="exview-stat-value">'+ex.reps+'</span></div>'+
+            '<div class="exview-stat"><span class="exview-stat-label">משקל</span><span class="exview-stat-value">'+ex.weight+'</span></div>'+
+            '<div class="exview-stat"><span class="exview-stat-label">מנוחה</span><span class="exview-stat-value">'+ex.rest+'</span></div>'+
+          '</div>'+
+          (ex.notes ? '<div class="exview-note"><span class="exview-note-label">הערות:</span>'+ex.notes+'</div>' : '')+
+        '</div>';
+      }).join('')+
+      '</div>'+
     '</div>';
 
   $('#versionSelect', panel).addEventListener('change', function(e){
     state.planViewVersionId = e.target.value===current.id ? null : e.target.value;
+    state.trainingNotesExpanded = false;
     renderPlanPanel(panel, client);
   });
   if(isHistory){
     $('#btnBackCurrent', panel).addEventListener('click', function(){
-      state.planViewVersionId = null; renderPlanPanel(panel, client);
+      state.planViewVersionId = null; state.trainingNotesExpanded = false; renderPlanPanel(panel, client);
     });
   } else {
     $('#btnNewPlan', panel).addEventListener('click', function(){ openPlanForm(client, null); });
     $('#btnEditPlan', panel).addEventListener('click', function(){ openPlanForm(client, viewing); });
   }
 
-  renderTrainingNotes(panel, client);
+  renderTrainingNotes(panel, client, viewing, sorted);
 }
 
-function renderTrainingNotes(panel, client){
+function renderTrainingNotes(panel, client, viewing, sortedPlans){
   var rows = $('#trainingNoteRows', panel);
-  var notes = (client.trainingNotes||[]).slice().sort(function(a,b){
+  var allNotes = notesForPlanVersion(client, sortedPlans, viewing).slice().sort(function(a,b){
     var da = a.date+' '+(a.time||''), db = b.date+' '+(b.time||'');
     return da<db ? 1 : -1;
   });
+  var expanded = !!state.trainingNotesExpanded;
+  var notes = expanded ? allNotes : allNotes.slice(0, 1);
   rows.innerHTML = '';
+  if(allNotes.length === 0){
+    rows.innerHTML = '<tr><td colspan="4" class="field-value muted">אין הערות אימון לתוכנית זו עדיין.</td></tr>';
+  }
   notes.forEach(function(n){
     var tr = document.createElement('tr');
     tr.innerHTML =
@@ -1168,15 +945,29 @@ function renderTrainingNotes(panel, client){
     });
   });
   $$('[data-del-note]', rows).forEach(function(b){
-    b.addEventListener('click', function(){
+    b.addEventListener('click', async function(){
       if(confirm('למחוק את ההערה?')){
+        var res = await sb.from('training_notes').delete().eq('id', b.dataset.delNote);
+        if(res.error){ alert('שגיאה במחיקת ההערה: '+res.error.message); return; }
         client.trainingNotes = client.trainingNotes.filter(function(n){ return n.id!==b.dataset.delNote; });
-        renderTrainingNotes(panel, client);
+        renderTrainingNotes(panel, client, viewing, sortedPlans);
       }
     });
   });
   var btnNew = $('#btnNewTrainingNote', panel);
   if(btnNew) btnNew.addEventListener('click', function(){ openTrainingNoteForm(client, null); });
+
+  var toggleWrap = $('#trainingNotesToggle', panel);
+  if(allNotes.length > 1){
+    toggleWrap.innerHTML = '<button class="btn btn-sm btn-ghost" id="btnToggleTrainingNotes">'+
+      (expanded ? 'הצג פחות' : 'הצג עוד ('+(allNotes.length-1)+')')+'</button>';
+    $('#btnToggleTrainingNotes', toggleWrap).addEventListener('click', function(){
+      state.trainingNotesExpanded = !expanded;
+      renderTrainingNotes(panel, client, viewing, sortedPlans);
+    });
+  } else {
+    toggleWrap.innerHTML = '';
+  }
 }
 
 function openTrainingNoteForm(client, note){
@@ -1192,15 +983,19 @@ function openTrainingNoteForm(client, note){
   var foot = '<button class="btn" id="btnCancel">ביטול</button><button class="btn btn-accent" id="btnSave">שמירה</button>';
   openModal(isNew ? 'הערת אימון חדשה' : 'עריכת הערת אימון', body, foot);
   $('#btnCancel').addEventListener('click', closeModal);
-  $('#btnSave').addEventListener('click', function(){
+  $('#btnSave').addEventListener('click', async function(){
     var text = $('#f_notetext').value.trim();
     if(!text){ alert('יש להזין טקסט הערה'); return; }
     var data = { date:$('#f_notedate').value, time:$('#f_notetime').value, note:text };
     if(isNew){
-      data.id = 'tn'+Date.now();
+      var res = await sb.from('training_notes').insert({client_id:client.id, date:data.date, time:data.time, note:data.note}).select().single();
+      if(res.error){ alert('שגיאה בשמירת ההערה: '+res.error.message); return; }
+      data.id = res.data.id;
       client.trainingNotes = client.trainingNotes || [];
       client.trainingNotes.push(data);
     } else {
+      var res = await sb.from('training_notes').update({date:data.date, time:data.time, note:data.note}).eq('id', note.id);
+      if(res.error){ alert('שגיאה בעדכון ההערה: '+res.error.message); return; }
       Object.assign(note, data);
     }
     closeModal();
@@ -1254,7 +1049,7 @@ function openClientForm(client){
   var foot = '<button class="btn" id="btnCancel">ביטול</button><button class="btn btn-accent" id="btnSave">שמירה</button>';
   openModal(isNew ? 'לקוח חדש' : 'עריכת פרטי לקוח', body, foot);
   $('#btnCancel').addEventListener('click', closeModal);
-  $('#btnSave').addEventListener('click', function(){
+  $('#btnSave').addEventListener('click', async function(){
     var name = $('#f_name').value.trim();
     if(!name){ alert('יש להזין שם מלא'); return; }
     var trainerIds = $$('[data-trainer]').filter(function(i){return i.checked;}).map(function(i){return i.dataset.trainer;});
@@ -1265,7 +1060,14 @@ function openClientForm(client){
       emergencyName:$('#f_ename').value, emergencyPhone:$('#f_ephone').value, trainerIds:trainerIds
     };
     if(isNew){
-      data.id = 'c'+Date.now();
+      var res = await sb.from('clients').insert(clientToRow(data)).select().single();
+      if(res.error){ alert('שגיאה בשמירת הלקוח: '+res.error.message); return; }
+      data.id = res.data.id;
+      if(trainerIds.length){
+        var ctRows = trainerIds.map(function(tid){ return {client_id:data.id, trainer_id:tid}; });
+        var ctRes = await sb.from('client_trainers').insert(ctRows);
+        if(ctRes.error){ alert('שגיאה בשיוך מאמנים: '+ctRes.error.message); return; }
+      }
       data.photo = null; data.measurements = []; data.plans = []; data.trainingNotes = [];
       state.clients.push(data);
       state.activeClientId = data.id;
@@ -1273,6 +1075,15 @@ function openClientForm(client){
       hideModalDom();
       history.replaceState({view:'detail', clientId:data.id}, '', location.href);
     } else {
+      var res = await sb.from('clients').update(clientToRow(data)).eq('id', client.id);
+      if(res.error){ alert('שגיאה בעדכון הלקוח: '+res.error.message); return; }
+      var delRes = await sb.from('client_trainers').delete().eq('client_id', client.id);
+      if(delRes.error){ alert('שגיאה בעדכון שיוך מאמנים: '+delRes.error.message); return; }
+      if(trainerIds.length){
+        var ctRows = trainerIds.map(function(tid){ return {client_id:client.id, trainer_id:tid}; });
+        var ctRes = await sb.from('client_trainers').insert(ctRows);
+        if(ctRes.error){ alert('שגיאה בשיוך מאמנים: '+ctRes.error.message); return; }
+      }
       Object.assign(client, data);
       closeModal();
     }
@@ -1282,13 +1093,14 @@ function openClientForm(client){
 
 function openMeasurementForm(client, m){
   var isNew = !m;
-  var v = m || {date:new Date().toISOString().slice(0,10),weight:'',fat:'',muscle:'',fatMass:'',waist:'',chest:'',arm:'',thigh:'',notes:''};
+  var v = m || {date:new Date().toISOString().slice(0,10),weight:'',fat:'',water:'',muscle:'',fatMass:'',waist:'',chest:'',arm:'',thigh:'',notes:''};
   var body =
     '<div class="form-row"><label>תאריך</label><input type="date" id="f_date" value="'+v.date+'"></div>'+
     '<div class="form-grid">'+
       '<div class="form-row"><label>משקל (ק"ג)</label><input type="number" step="0.1" id="f_weight" value="'+v.weight+'"></div>'+
       '<div class="form-row"><label>BMI (מחושב)</label><div class="field-value" id="f_bmi_preview">'+(bmiFor(client, v.weight)?fmt(bmiFor(client, v.weight)):'—')+'</div></div>'+
       '<div class="form-row"><label>אחוז שומן (%)</label><input type="number" step="0.1" id="f_fat" value="'+v.fat+'"></div>'+
+      '<div class="form-row"><label>אחוז נוזלים (%)</label><input type="number" step="0.1" id="f_water" value="'+v.water+'"></div>'+
       '<div class="form-row"><label>מסת שריר (ק"ג)</label><input type="number" step="0.1" id="f_muscle" value="'+v.muscle+'"></div>'+
       '<div class="form-row"><label>מסת שומן (ק"ג)</label><input type="number" step="0.1" id="f_fatMass" value="'+v.fatMass+'"></div>'+
       '<div class="form-row"><label>היקף מותניים (ס"מ)</label><input type="number" step="0.1" id="f_waist" value="'+v.waist+'"></div>'+
@@ -1305,15 +1117,23 @@ function openMeasurementForm(client, m){
     var bmi = bmiFor(client, w);
     $('#f_bmi_preview').textContent = bmi ? fmt(bmi) : '—';
   });
-  $('#btnSave').addEventListener('click', function(){
+  $('#btnSave').addEventListener('click', async function(){
     var num = function(id){ var val = parseFloat($(id).value); return isNaN(val) ? 0 : val; };
     var data = {
-      date:$('#f_date').value, weight:num('#f_weight'), fat:num('#f_fat'), muscle:num('#f_muscle'),
+      date:$('#f_date').value, weight:num('#f_weight'), fat:num('#f_fat'), water:num('#f_water'), muscle:num('#f_muscle'),
       fatMass:num('#f_fatMass'), waist:num('#f_waist'), chest:num('#f_chest'), arm:num('#f_arm'),
       thigh:num('#f_thigh'), notes:$('#f_notes').value
     };
-    if(isNew){ data.id = 'm'+Date.now(); client.measurements.push(data); }
-    else { Object.assign(m, data); }
+    if(isNew){
+      var res = await sb.from('measurements').insert(measurementToRow(data, client.id)).select().single();
+      if(res.error){ alert('שגיאה בשמירת המדידה: '+res.error.message); return; }
+      data.id = res.data.id;
+      client.measurements.push(data);
+    } else {
+      var res = await sb.from('measurements').update(measurementToRow(data, client.id)).eq('id', m.id);
+      if(res.error){ alert('שגיאה בעדכון המדידה: '+res.error.message); return; }
+      Object.assign(m, data);
+    }
     client.measurements.sort(function(a,b){ return a.date<b.date?-1:1; });
     closeModal();
     renderMain();
@@ -1366,14 +1186,31 @@ function openPlanForm(client, plan){
     wireRemove();
   });
 
-  $('#btnSave').addEventListener('click', function(){
+  $('#btnSave').addEventListener('click', async function(){
     var exercises = $$('[data-ex-row]').map(function(row){
       var get = function(f){ return $('[data-f="'+f+'"]', row).value; };
       return {name:get('name'), sets:get('sets'), reps:get('reps'), weight:get('weight'), rest:get('rest'), notes:get('notes')};
     }).filter(function(ex){ return ex.name.trim(); });
     if(!exercises.length){ alert('יש להוסיף לפחות תרגיל אחד'); return; }
     var data = { effectiveDate:$('#f_effdate').value, coachNotes:$('#f_coachnotes').value, exercises:exercises };
-    if(isNew){ data.id='p'+Date.now(); client.plans.push(data); state.planViewVersionId=null; }
+    var planId;
+    if(isNew){
+      var res = await sb.from('training_plans').insert({client_id:client.id, effective_date:data.effectiveDate, coach_notes:data.coachNotes||null}).select().single();
+      if(res.error){ alert('שגיאה בשמירת התוכנית: '+res.error.message); return; }
+      planId = res.data.id;
+    } else {
+      planId = plan.id;
+      var res = await sb.from('training_plans').update({effective_date:data.effectiveDate, coach_notes:data.coachNotes||null}).eq('id', planId);
+      if(res.error){ alert('שגיאה בעדכון התוכנית: '+res.error.message); return; }
+      var delRes = await sb.from('training_plan_exercises').delete().eq('training_plan_id', planId);
+      if(delRes.error){ alert('שגיאה בעדכון התרגילים: '+delRes.error.message); return; }
+    }
+    var exRows = exercises.map(function(ex, i){
+      return {training_plan_id:planId, order_index:i, exercise_name:ex.name, sets:ex.sets||null, reps:ex.reps||null, working_weight_kg:ex.weight||null, rest_time:ex.rest||null, notes:ex.notes||null};
+    });
+    var exRes = await sb.from('training_plan_exercises').insert(exRows);
+    if(exRes.error){ alert('שגיאה בשמירת התרגילים: '+exRes.error.message); return; }
+    if(isNew){ data.id = planId; client.plans.push(data); state.planViewVersionId=null; }
     else { Object.assign(plan, data); }
     closeModal();
     renderMain();
@@ -1402,16 +1239,19 @@ window.addEventListener('popstate', function(e){
   renderAll();
 });
 
-state.activeClientId = state.clients[0].id;
-history.replaceState({view:'list'}, '', location.href);
-renderAll();
-
 var splash = $('#splashScreen');
-if (splash){
-  var dismissSplash = function(){ splash.classList.add('hide'); };
-  setTimeout(dismissSplash, 900);
-  splash.addEventListener('click', dismissSplash);
-}
+var dismissSplash = function(){ if(splash) splash.classList.add('hide'); };
+if (splash) splash.addEventListener('click', dismissSplash);
+
+loadState().then(function(){
+  state.activeClientId = state.clients.length ? state.clients[0].id : null;
+  history.replaceState({view:'list'}, '', location.href);
+  renderAll();
+  dismissSplash();
+}).catch(function(err){
+  dismissSplash();
+  $('#main').innerHTML = '<div class="empty-state"><h2>שגיאה בטעינת הנתונים</h2><p>בדקו את החיבור לאינטרנט ורעננו את הדף.</p></div>';
+});
 
 })();
 </script>

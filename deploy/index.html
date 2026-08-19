@@ -566,7 +566,8 @@ var state = {
   clients: [],
   view: 'main', // 'main' (client list/detail shell) | 'schedule' (תיאום אימונים)
   slots: [],
-  scheduleTrainerId: null, // client role: which trainer's open slots are being browsed
+  scheduleTrainerId: null, // client role: which trainer's open slots are being browsed; owner role: filter for "all trainers" tab
+  scheduleOwnerTab: null, // owner role: 'mine' | 'all' — which scheduling sub-tab is active
 };
 
 var $ = function(sel, root){ return (root||document).querySelector(sel); };
@@ -1506,15 +1507,19 @@ function renderSchedule(){
   if(currentUser.role === 'client') return renderScheduleClient(main);
 }
 
-function renderScheduleTrainer(main){
+/* used both by the trainer role's own screen and the owner's "המשבצות שלי" tab (owner */
+/* is also a trainer per the club's real business model, see PROJECT.md) — renders the */
+/* add-slot button + this trainer's own slot list into whatever container it's given. */
+function renderMySlotsSection(container){
   var mySlots = sortSlots(state.slots.filter(function(s){ return s.trainerId===currentUser.trainerId; }));
-  main.innerHTML =
-    '<div class="profile-head"><div><h2>תיאום אימונים</h2><div class="profile-goal">משבצות הזמן שלך</div></div>'+
+  container.innerHTML =
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px;">'+
+      '<div class="section-title" style="margin:0;">המשבצות שלי</div>'+
       '<button class="btn btn-accent btn-sm" id="btnNewSlot">+ משבצת חדשה</button>'+
     '</div>'+
     '<div id="slotListTrainer"></div>';
-  $('#btnNewSlot').addEventListener('click', function(){ openSlotForm(); });
-  var list = $('#slotListTrainer');
+  $('#btnNewSlot', container).addEventListener('click', function(){ openSlotForm(); });
+  var list = $('#slotListTrainer', container);
   if(!mySlots.length){
     list.innerHTML = '<div class="empty-state"><h2>אין עדיין משבצות</h2><p>הוסיפו משבצת זמן פתוחה כדי שלקוחות יוכלו לקבוע תור.</p></div>';
     return;
@@ -1524,6 +1529,12 @@ function renderScheduleTrainer(main){
     var sub = s.status==='booked' ? ('נקבע עם: '+(client?client.name:'—')) : 'פנוי לקביעה';
     return slotCardHtml(fmtDate(s.date)+' · '+s.startTime+'–'+s.endTime, sub, slotChipHtml(s.status));
   }).join('');
+}
+function renderScheduleTrainer(main){
+  main.innerHTML =
+    '<div class="profile-head"><div><h2>תיאום אימונים</h2><div class="profile-goal">משבצות הזמן שלך</div></div></div>'+
+    '<div id="mySlotsSection"></div>';
+  renderMySlotsSection($('#mySlotsSection', main));
 }
 
 function openSlotForm(){
@@ -1555,24 +1566,46 @@ function openSlotForm(){
   });
 }
 
+/* owner is also a trainer in real life (see PROJECT.md, "רקע") — so the owner gets both */
+/* their own "המשבצות שלי" (identical to the trainer screen) AND the cross-trainer overview. */
 function renderScheduleOwner(main){
+  if(!state.scheduleOwnerTab) state.scheduleOwnerTab = 'mine';
+  main.innerHTML =
+    '<div class="profile-head"><div><h2>תיאום אימונים</h2><div class="profile-goal">'+
+      (state.scheduleOwnerTab==='mine' ? 'משבצות הזמן שלך' : 'משבצות כל המאמנים')+
+    '</div></div></div>'+
+    '<div class="tabs">'+
+      '<button class="tab" data-owner-tab="mine">המשבצות שלי</button>'+
+      '<button class="tab" data-owner-tab="all">כל המאמנים</button>'+
+    '</div>'+
+    '<div id="ownerScheduleBody" style="padding-top:14px;"></div>';
+  $$('[data-owner-tab]', main).forEach(function(b){
+    if(b.dataset.ownerTab===state.scheduleOwnerTab) b.classList.add('active');
+    b.addEventListener('click', function(){
+      state.scheduleOwnerTab = b.dataset.ownerTab;
+      renderScheduleOwner(main);
+    });
+  });
+  var body = $('#ownerScheduleBody', main);
+  if(state.scheduleOwnerTab === 'mine') renderMySlotsSection(body);
+  else renderOwnerAllSlots(body);
+}
+function renderOwnerAllSlots(container){
   var trainerOptions = state.trainers.map(function(t){
     return '<option value="'+t.id+'"'+(state.scheduleTrainerId===t.id?' selected':'')+'>'+t.name+'</option>';
   }).join('');
-  main.innerHTML =
-    '<div class="profile-head"><div><h2>תיאום אימונים</h2><div class="profile-goal">משבצות כל המאמנים</div></div></div>'+
+  container.innerHTML =
     '<div class="card"><div class="form-row"><label>סינון לפי מאמן/ת</label>'+
       '<select class="select" id="scheduleOwnerFilter"><option value="">כל המאמנים</option>'+trainerOptions+'</select>'+
     '</div></div>'+
     '<div id="ownerSlotList" style="margin-top:12px;"></div>';
-  $('#scheduleOwnerFilter').addEventListener('change', function(e){
+  $('#scheduleOwnerFilter', container).addEventListener('change', function(e){
     state.scheduleTrainerId = e.target.value || null;
-    renderOwnerSlotList();
+    renderOwnerSlotListBody($('#ownerSlotList', container));
   });
-  renderOwnerSlotList();
+  renderOwnerSlotListBody($('#ownerSlotList', container));
 }
-function renderOwnerSlotList(){
-  var container = $('#ownerSlotList');
+function renderOwnerSlotListBody(container){
   var slots = sortSlots(state.scheduleTrainerId ? state.slots.filter(function(s){ return s.trainerId===state.scheduleTrainerId; }) : state.slots);
   if(!slots.length){ container.innerHTML = '<div class="empty-state"><h2>אין משבצות</h2></div>'; return; }
   container.innerHTML = slots.map(function(s){

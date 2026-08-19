@@ -33,11 +33,12 @@ create table clients (
   updated_at               timestamptz not null default now()
 );
 
-create table client_trainers (
-  client_id   uuid not null references clients(id)  on delete cascade,
-  trainer_id  uuid not null references trainers(id) on delete cascade,
-  primary key (client_id, trainer_id)
-);
+-- NOTE: the client_trainers link table (many-to-many client<->trainer
+-- assignment) was removed 2026-08-19 to simplify the access model — every
+-- trainer now sees/edits every client, no assignment step. See PROJECT.md
+-- ("סוגי משתמשים והתחברות" — "פישוט 19.08.26") and
+-- supabase/migrations/2026-08-19_simplify_trainer_client_access.sql, which
+-- drops the table on the live project.
 
 create table measurements (
   id                 uuid primary key default gen_random_uuid(),
@@ -116,18 +117,19 @@ create index on training_slots (trainer_id, date, start_time);
 create unique index training_slots_trainer_datetime_uniq on training_slots (trainer_id, date, start_time);
 
 -- ============================================================================
--- User types & Row Level Security — DRAFT, added 2026-08-04, refined 2026-08-08
--- alongside the login UI in deploy/index.html.
--- Not yet applied to or tested against the real Supabase project — run
--- supabase/migrations/2026-08-08_user_roles_and_login.sql by hand in the
--- Supabase SQL editor to apply this to the live project (see OPEN_QUESTIONS.md).
+-- User types & Row Level Security — added 2026-08-04, refined 2026-08-08,
+-- simplified 2026-08-19 alongside the login UI in deploy/index.html.
+-- Applied to the real Supabase project via
+-- supabase/migrations/2026-08-08_user_roles_and_login.sql (18.08.26) and
+-- supabase/migrations/2026-08-19_simplify_trainer_client_access.sql (not yet
+-- run against the live project — see OPEN_QUESTIONS.md).
 -- Reflects three user types described in PROJECT.md ("סוגי משתמשים והתחברות"):
---   owner   — trainers.role = 'owner': full read/write on everything.
---   trainer — trainers.role = 'trainer': read/write only on clients
---             assigned to them via client_trainers. May create a new client
---             and self-assign (deploy/index.html does both in one save), but
---             reassigning trainers on an *existing* client stays owner-only —
---             the app's client form hides that field entirely for trainers.
+--   owner   — trainers.role = 'owner': full read/write on everything except
+--             other trainers stay owner-managed either way (see below).
+--   trainer — trainers.role = 'trainer': read/write on EVERY client (no more
+--             per-trainer assignment — client_trainers was removed 19.08.26,
+--             see PROJECT.md "פישוט 19.08.26"). May create a new client.
+--             Cannot manage other trainer rows (owner-only).
 --   client  — clients.auth_user_id = auth.uid(): read-only on their own data.
 -- Accounts are invite-only: an admin links a trainers/clients row to a
 -- Supabase Auth user by setting auth_user_id (manual in the Supabase
@@ -136,7 +138,6 @@ create unique index training_slots_trainer_datetime_uniq on training_slots (trai
 
 alter table trainers                 enable row level security;
 alter table clients                  enable row level security;
-alter table client_trainers          enable row level security;
 alter table measurements             enable row level security;
 alter table training_plans           enable row level security;
 alter table training_plan_exercises  enable row level security;
@@ -148,15 +149,6 @@ language sql stable security definer as $$
   select exists (
     select 1 from trainers
     where auth_user_id = auth.uid() and role = 'owner'
-  );
-$$;
-
-create or replace function is_assigned_trainer(p_client_id uuid) returns boolean
-language sql stable security definer as $$
-  select exists (
-    select 1 from client_trainers ct
-    join trainers t on t.id = ct.trainer_id
-    where ct.client_id = p_client_id and t.auth_user_id = auth.uid()
   );
 $$;
 
@@ -193,76 +185,64 @@ create policy trainers_select on trainers for select
 create policy trainers_modify on trainers for all
   using (is_owner()) with check (is_owner());
 
--- client_trainers: owner manages assignments freely; a trainer can see their
--- own assignments and may INSERT a self-assignment (trainer_id = themself) —
--- this is what lets a trainer create a client and self-assign in one save —
--- but cannot reassign/remove assignments, including their own (owner-only).
-create policy client_trainers_select on client_trainers for select
-  using (is_owner() or trainer_id = current_trainer_id());
-create policy client_trainers_insert on client_trainers for insert
-  with check (is_owner() or trainer_id = current_trainer_id());
-create policy client_trainers_update on client_trainers for update
-  using (is_owner()) with check (is_owner());
-create policy client_trainers_delete on client_trainers for delete
-  using (is_owner());
-
--- clients: owner full access; any trainer may INSERT a new client (it isn't
--- assigned to anyone yet at insert time, so is_assigned_trainer() can't be
--- used for that check); select/update/delete then narrow to owner or the
--- assigned trainer(s); client role is read-only on their own row.
+-- clients: every trainer (and the owner) has full access to every client —
+-- no more per-trainer assignment (client_trainers removed 19.08.26, see
+-- PROJECT.md "פישוט 19.08.26"); client role is read-only on their own row.
 create policy clients_select on clients for select
-  using (is_owner() or is_assigned_trainer(id) or is_self_client(id));
+  using (is_owner() or is_any_trainer() or is_self_client(id));
 create policy clients_insert on clients for insert
   with check (is_owner() or is_any_trainer());
 create policy clients_update on clients for update
-  using (is_owner() or is_assigned_trainer(id))
-  with check (is_owner() or is_assigned_trainer(id));
+  using (is_owner() or is_any_trainer())
+  with check (is_owner() or is_any_trainer());
 create policy clients_delete on clients for delete
-  using (is_owner() or is_assigned_trainer(id));
+  using (is_owner() or is_any_trainer());
 
 -- measurements / training_plans / training_notes: same shape, scoped by client_id.
 create policy measurements_select on measurements for select
-  using (is_owner() or is_assigned_trainer(client_id) or is_self_client(client_id));
+  using (is_owner() or is_any_trainer() or is_self_client(client_id));
 create policy measurements_modify on measurements for all
-  using (is_owner() or is_assigned_trainer(client_id))
-  with check (is_owner() or is_assigned_trainer(client_id));
+  using (is_owner() or is_any_trainer())
+  with check (is_owner() or is_any_trainer());
 
 create policy training_plans_select on training_plans for select
-  using (is_owner() or is_assigned_trainer(client_id) or is_self_client(client_id));
+  using (is_owner() or is_any_trainer() or is_self_client(client_id));
 create policy training_plans_modify on training_plans for all
-  using (is_owner() or is_assigned_trainer(client_id))
-  with check (is_owner() or is_assigned_trainer(client_id));
+  using (is_owner() or is_any_trainer())
+  with check (is_owner() or is_any_trainer());
 
 create policy training_notes_select on training_notes for select
-  using (is_owner() or is_assigned_trainer(client_id) or is_self_client(client_id));
+  using (is_owner() or is_any_trainer() or is_self_client(client_id));
 create policy training_notes_modify on training_notes for all
-  using (is_owner() or is_assigned_trainer(client_id))
-  with check (is_owner() or is_assigned_trainer(client_id));
+  using (is_owner() or is_any_trainer())
+  with check (is_owner() or is_any_trainer());
 
 -- training_plan_exercises: scoped through the parent plan's client.
 create policy training_plan_exercises_select on training_plan_exercises for select
   using (exists (
     select 1 from training_plans p
     where p.id = training_plan_id
-      and (is_owner() or is_assigned_trainer(p.client_id) or is_self_client(p.client_id))
+      and (is_owner() or is_any_trainer() or is_self_client(p.client_id))
   ));
 create policy training_plan_exercises_modify on training_plan_exercises for all
   using (exists (
     select 1 from training_plans p
-    where p.id = training_plan_id and (is_owner() or is_assigned_trainer(p.client_id))
+    where p.id = training_plan_id and (is_owner() or is_any_trainer())
   ))
   with check (exists (
     select 1 from training_plans p
-    where p.id = training_plan_id and (is_owner() or is_assigned_trainer(p.client_id))
+    where p.id = training_plan_id and (is_owner() or is_any_trainer())
   ));
 
--- training_slots: owner sees/manages everything; a trainer sees/manages only their
--- own slots (open or booked); a client sees open slots for ANY trainer (to browse
--- and pick one) plus their own booked slots, but not other clients' bookings.
+-- training_slots: every trainer (and the owner) can SEE every slot, across all
+-- trainers — added 19.08.26 (see PROJECT.md "פישוט 19.08.26"); a client sees
+-- open slots for ANY trainer (to browse and pick one) plus their own booked
+-- slots, but not other clients' bookings. Creating/editing a slot stays scoped
+-- to the owning trainer (or owner) — see the insert/update policies below.
 create policy training_slots_select on training_slots for select
   using (
     is_owner()
-    or trainer_id = current_trainer_id()
+    or is_any_trainer()
     or (status = 'open' and is_any_client())
     or client_id = current_client_id()
   );

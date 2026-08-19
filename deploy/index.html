@@ -474,7 +474,7 @@ function clientFromRow(row){
     goal: row.training_goal, medical: row.medical_condition, injuries: row.injuries_limitations,
     meds: row.medications, doctorApproval: doctorApprovalToUi(row.doctor_approval),
     emergencyName: row.emergency_contact_name, emergencyPhone: row.emergency_contact_phone,
-    trainerIds: [], measurements: [], plans: [], trainingNotes: []
+    measurements: [], plans: [], trainingNotes: []
   };
 }
 function clientToRow(data){
@@ -527,7 +527,6 @@ async function loadState(){
   var res = await Promise.all([
     sb.from('trainers').select('*'),
     sb.from('clients').select('*'),
-    sb.from('client_trainers').select('*'),
     sb.from('measurements').select('*').order('date'),
     sb.from('training_plans').select('*').order('effective_date'),
     sb.from('training_plan_exercises').select('*').order('order_index'),
@@ -537,15 +536,14 @@ async function loadState(){
   for(var i=0;i<res.length;i++){
     if(res[i].error){ alert('שגיאה בטעינת נתונים מהשרת: '+res[i].error.message); throw res[i].error; }
   }
-  var trainers = res[0].data, clientRows = res[1].data, clientTrainerRows = res[2].data,
-      measurementRows = res[3].data, planRows = res[4].data, exerciseRows = res[5].data, noteRows = res[6].data,
-      slotRows = res[7].data;
+  var trainers = res[0].data, clientRows = res[1].data,
+      measurementRows = res[2].data, planRows = res[3].data, exerciseRows = res[4].data, noteRows = res[5].data,
+      slotRows = res[6].data;
 
   state.trainers = trainers.map(function(t){ return {id:t.id, name:t.full_name}; });
 
   var clients = clientRows.map(clientFromRow);
   clients.forEach(function(c){
-    c.trainerIds = clientTrainerRows.filter(function(ct){ return ct.client_id===c.id; }).map(function(ct){ return ct.trainer_id; });
     c.measurements = measurementRows.filter(function(m){ return m.client_id===c.id; }).map(measurementFromRow);
     c.plans = planRows.filter(function(p){ return p.client_id===c.id; }).map(function(p){
       var plan = planFromRow(p);
@@ -566,8 +564,8 @@ var state = {
   clients: [],
   view: 'main', // 'main' (client list/detail shell) | 'schedule' (תיאום אימונים)
   slots: [],
-  scheduleTrainerId: null, // client role: which trainer's open slots are being browsed; owner role: filter for "all trainers" tab
-  scheduleOwnerTab: null, // owner role: 'mine' | 'all' — which scheduling sub-tab is active
+  scheduleTrainerId: null, // client role: which trainer's open slots are being browsed; trainer/owner role: filter for "all trainers" tab
+  scheduleTab: null, // trainer/owner role: 'mine' | 'all' — which scheduling sub-tab is active (every trainer sees every trainer's slots since 19.08.26)
 };
 
 var $ = function(sel, root){ return (root||document).querySelector(sel); };
@@ -846,11 +844,6 @@ function renderMain(){
 }
 
 function renderOverviewPanel(panel, client){
-  var trainerNames = client.trainerIds.map(function(id){
-    var t = state.trainers.find(function(x){ return x.id===id; });
-    return t ? t.name : '';
-  }).join(', ');
-
   function field(label, value, muted){
     return '<div><div class="field-label">'+label+'</div><div class="field-value'+(muted?' muted':'')+'">'+(value||'—')+'</div></div>';
   }
@@ -863,7 +856,6 @@ function renderOverviewPanel(panel, client){
         field('תאריך לידה', fmtDate(client.dob))+field('מין', client.gender)+
         field('גובה', client.height ? client.height+' ס"מ' : null, !client.height)+
         field('BMI (מחושב)', bmiValue(client) ? fmt(bmiValue(client)) : null, !bmiValue(client))+
-        field('מאמנים', trainerNames)+
       '</div>'+
       '<div class="section-title">אימון</div>'+
       '<div class="grid-2">'+field('מטרת אימון', client.goal)+'</div>'+
@@ -1219,14 +1211,7 @@ $('#overlay').addEventListener('click', function(e){ if(e.target.id==='overlay')
 
 function openClientForm(client){
   var isNew = !client;
-  var c = client || {phone:'',email:'',dob:'',gender:'אישה',height:'',goal:'',medical:'',injuries:'',meds:'',doctorApproval:'',emergencyName:'',emergencyPhone:'',trainerIds:[]};
-  /* only the owner can (re)assign clients across trainers — a regular trainer just gets */
-  /* auto-assigned to themself on creation and can't see/edit other trainers' assignments here */
-  var canAssignTrainers = currentUser.role === 'owner';
-  var trainerChecks = state.trainers.map(function(t){
-    return '<label style="display:flex;align-items:center;gap:6px;font-weight:400;font-size:13.5px;">'+
-      '<input type="checkbox" data-trainer="'+t.id+'" '+(c.trainerIds.indexOf(t.id)>-1?'checked':'')+'> '+t.name+'</label>';
-  }).join('');
+  var c = client || {phone:'',email:'',dob:'',gender:'אישה',height:'',goal:'',medical:'',injuries:'',meds:'',doctorApproval:'',emergencyName:'',emergencyPhone:''};
   var body =
     '<div class="form-row"><label>שם מלא</label><input id="f_name" value="'+(c.name||'')+'"></div>'+
     '<div class="form-grid">'+
@@ -1244,34 +1229,23 @@ function openClientForm(client){
     '<div class="form-grid">'+
       '<div class="form-row"><label>איש קשר לחירום - שם</label><input id="f_ename" value="'+(c.emergencyName||'')+'"></div>'+
       '<div class="form-row"><label>איש קשר לחירום - טלפון</label><input id="f_ephone" value="'+(c.emergencyPhone||'')+'"></div>'+
-    '</div>'+
-    (canAssignTrainers ? '<div class="form-row"><label>מאמנים משויכים</label>'+trainerChecks+'</div>' : '');
+    '</div>';
   var foot = '<button class="btn" id="btnCancel">ביטול</button><button class="btn btn-accent" id="btnSave">שמירה</button>';
   openModal(isNew ? 'לקוח חדש' : 'עריכת פרטי לקוח', body, foot);
   $('#btnCancel').addEventListener('click', closeModal);
   $('#btnSave').addEventListener('click', async function(){
     var name = $('#f_name').value.trim();
     if(!name){ alert('יש להזין שם מלא'); return; }
-    var trainerIds = canAssignTrainers ? $$('[data-trainer]').filter(function(i){return i.checked;}).map(function(i){return i.dataset.trainer;}) : [];
     var data = {
       name:name, phone:$('#f_phone').value, email:$('#f_email').value, dob:$('#f_dob').value,
       gender:$('#f_gender').value, height:parseFloat($('#f_height').value)||'', goal:$('#f_goal').value, medical:$('#f_medical').value,
       injuries:$('#f_injuries').value, meds:$('#f_meds').value, doctorApproval:$('#f_doctor').value,
-      emergencyName:$('#f_ename').value, emergencyPhone:$('#f_ephone').value, trainerIds:trainerIds
+      emergencyName:$('#f_ename').value, emergencyPhone:$('#f_ephone').value
     };
     if(isNew){
       var res = await sb.from('clients').insert(clientToRow(data)).select().single();
       if(res.error){ alert('שגיאה בשמירת הלקוח: '+res.error.message); return; }
       data.id = res.data.id;
-      /* owner: whatever was checked in the form. trainer: no checkboxes shown — auto-assign themself */
-      /* so their own new client doesn't vanish (RLS only grants a trainer access to assigned clients). */
-      var ctInsertIds = canAssignTrainers ? trainerIds : (currentUser.trainerId ? [currentUser.trainerId] : []);
-      data.trainerIds = ctInsertIds;
-      if(ctInsertIds.length){
-        var ctRows = ctInsertIds.map(function(tid){ return {client_id:data.id, trainer_id:tid}; });
-        var ctRes = await sb.from('client_trainers').insert(ctRows);
-        if(ctRes.error){ alert('שגיאה בשיוך מאמנים: '+ctRes.error.message); return; }
-      }
       data.photo = null; data.measurements = []; data.plans = []; data.trainingNotes = [];
       state.clients.push(data);
       state.activeClientId = data.id;
@@ -1281,19 +1255,6 @@ function openClientForm(client){
     } else {
       var res = await sb.from('clients').update(clientToRow(data)).eq('id', client.id);
       if(res.error){ alert('שגיאה בעדכון הלקוח: '+res.error.message); return; }
-      /* trainer assignments are an owner-only edit here — a regular trainer's form has no */
-      /* checkboxes for it, so skip touching client_trainers entirely rather than wiping existing rows */
-      if(canAssignTrainers){
-        var delRes = await sb.from('client_trainers').delete().eq('client_id', client.id);
-        if(delRes.error){ alert('שגיאה בעדכון שיוך מאמנים: '+delRes.error.message); return; }
-        if(trainerIds.length){
-          var ctRows = trainerIds.map(function(tid){ return {client_id:client.id, trainer_id:tid}; });
-          var ctRes = await sb.from('client_trainers').insert(ctRows);
-          if(ctRes.error){ alert('שגיאה בשיוך מאמנים: '+ctRes.error.message); return; }
-        }
-      } else {
-        data.trainerIds = client.trainerIds;
-      }
       Object.assign(client, data);
       closeModal();
     }
@@ -1502,13 +1463,11 @@ function slotCardHtml(dateTimeLabel, subLabel, chipOrActionHtml){
 
 function renderSchedule(){
   var main = $('#scheduleMain');
-  if(currentUser.role === 'trainer') return renderScheduleTrainer(main);
-  if(currentUser.role === 'owner') return renderScheduleOwner(main);
+  if(currentUser.role === 'trainer' || currentUser.role === 'owner') return renderScheduleTrainerOrOwner(main);
   if(currentUser.role === 'client') return renderScheduleClient(main);
 }
 
-/* used both by the trainer role's own screen and the owner's "המשבצות שלי" tab (owner */
-/* is also a trainer per the club's real business model, see PROJECT.md) — renders the */
+/* used by the "המשבצות שלי" tab of renderScheduleTrainerOrOwner — renders the */
 /* add-slot button + this trainer's own slot list into whatever container it's given. */
 function renderMySlotsSection(container){
   var mySlots = sortSlots(state.slots.filter(function(s){ return s.trainerId===currentUser.trainerId; }));
@@ -1530,13 +1489,6 @@ function renderMySlotsSection(container){
     return slotCardHtml(fmtDate(s.date)+' · '+s.startTime+'–'+s.endTime, sub, slotChipHtml(s.status));
   }).join('');
 }
-function renderScheduleTrainer(main){
-  main.innerHTML =
-    '<div class="profile-head"><div><h2>תיאום אימונים</h2><div class="profile-goal">משבצות הזמן שלך</div></div></div>'+
-    '<div id="mySlotsSection"></div>';
-  renderMySlotsSection($('#mySlotsSection', main));
-}
-
 function openSlotForm(){
   var today = new Date().toISOString().slice(0,10);
   var body =
@@ -1566,46 +1518,47 @@ function openSlotForm(){
   });
 }
 
-/* owner is also a trainer in real life (see PROJECT.md, "רקע") — so the owner gets both */
-/* their own "המשבצות שלי" (identical to the trainer screen) AND the cross-trainer overview. */
-function renderScheduleOwner(main){
-  if(!state.scheduleOwnerTab) state.scheduleOwnerTab = 'mine';
+/* Both trainer and owner get the same two-tab schedule screen: "המשבצות שלי" to */
+/* manage their own slots, and "כל המאמנים" to browse every trainer's slots (view-only) — */
+/* every trainer can see every trainer's schedule since 19.08.26, see PROJECT.md "פישוט 19.08.26". */
+function renderScheduleTrainerOrOwner(main){
+  if(!state.scheduleTab) state.scheduleTab = 'mine';
   main.innerHTML =
     '<div class="profile-head"><div><h2>תיאום אימונים</h2><div class="profile-goal">'+
-      (state.scheduleOwnerTab==='mine' ? 'משבצות הזמן שלך' : 'משבצות כל המאמנים')+
+      (state.scheduleTab==='mine' ? 'משבצות הזמן שלך' : 'משבצות כל המאמנים')+
     '</div></div></div>'+
     '<div class="tabs">'+
-      '<button class="tab" data-owner-tab="mine">המשבצות שלי</button>'+
-      '<button class="tab" data-owner-tab="all">כל המאמנים</button>'+
+      '<button class="tab" data-schedule-tab="mine">המשבצות שלי</button>'+
+      '<button class="tab" data-schedule-tab="all">כל המאמנים</button>'+
     '</div>'+
-    '<div id="ownerScheduleBody" style="padding-top:14px;"></div>';
-  $$('[data-owner-tab]', main).forEach(function(b){
-    if(b.dataset.ownerTab===state.scheduleOwnerTab) b.classList.add('active');
+    '<div id="scheduleTabBody" style="padding-top:14px;"></div>';
+  $$('[data-schedule-tab]', main).forEach(function(b){
+    if(b.dataset.scheduleTab===state.scheduleTab) b.classList.add('active');
     b.addEventListener('click', function(){
-      state.scheduleOwnerTab = b.dataset.ownerTab;
-      renderScheduleOwner(main);
+      state.scheduleTab = b.dataset.scheduleTab;
+      renderScheduleTrainerOrOwner(main);
     });
   });
-  var body = $('#ownerScheduleBody', main);
-  if(state.scheduleOwnerTab === 'mine') renderMySlotsSection(body);
-  else renderOwnerAllSlots(body);
+  var body = $('#scheduleTabBody', main);
+  if(state.scheduleTab === 'mine') renderMySlotsSection(body);
+  else renderAllTrainersSlots(body);
 }
-function renderOwnerAllSlots(container){
+function renderAllTrainersSlots(container){
   var trainerOptions = state.trainers.map(function(t){
     return '<option value="'+t.id+'"'+(state.scheduleTrainerId===t.id?' selected':'')+'>'+t.name+'</option>';
   }).join('');
   container.innerHTML =
     '<div class="card"><div class="form-row"><label>סינון לפי מאמן/ת</label>'+
-      '<select class="select" id="scheduleOwnerFilter"><option value="">כל המאמנים</option>'+trainerOptions+'</select>'+
+      '<select class="select" id="scheduleAllFilter"><option value="">כל המאמנים</option>'+trainerOptions+'</select>'+
     '</div></div>'+
-    '<div id="ownerSlotList" style="margin-top:12px;"></div>';
-  $('#scheduleOwnerFilter', container).addEventListener('change', function(e){
+    '<div id="allSlotList" style="margin-top:12px;"></div>';
+  $('#scheduleAllFilter', container).addEventListener('change', function(e){
     state.scheduleTrainerId = e.target.value || null;
-    renderOwnerSlotListBody($('#ownerSlotList', container));
+    renderAllSlotListBody($('#allSlotList', container));
   });
-  renderOwnerSlotListBody($('#ownerSlotList', container));
+  renderAllSlotListBody($('#allSlotList', container));
 }
-function renderOwnerSlotListBody(container){
+function renderAllSlotListBody(container){
   var slots = sortSlots(state.scheduleTrainerId ? state.slots.filter(function(s){ return s.trainerId===state.scheduleTrainerId; }) : state.slots);
   if(!slots.length){ container.innerHTML = '<div class="empty-state"><h2>אין משבצות</h2></div>'; return; }
   container.innerHTML = slots.map(function(s){
@@ -1727,9 +1680,8 @@ async function afterLogin(session){
   state.view = 'main';
   updateNavActive();
 
-  if(currentUser.role === 'trainer'){
-    state.clients = state.clients.filter(function(c){ return c.trainerIds.indexOf(currentUser.trainerId) > -1; });
-  }
+  /* no per-trainer client filtering — every trainer (and the owner) sees every */
+  /* client, client_trainers assignment was removed 19.08.26 (see PROJECT.md). */
 
   if(currentUser.role === 'client'){
     state.activeClientId = currentUser.clientId;

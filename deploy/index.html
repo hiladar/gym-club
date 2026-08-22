@@ -116,9 +116,25 @@
     appearance:none; border:1px solid var(--border-strong); background:var(--bg-surface);
     color:var(--text-primary); padding:9px 16px; border-radius:8px; font-size:14px; min-height:40px;
     cursor:pointer; display:inline-flex; align-items:center; gap:6px; font-family:inherit;
+    position:relative; -webkit-tap-highlight-color:transparent; touch-action:manipulation;
+    transition:transform .06s ease, background-color .12s ease, border-color .12s ease, opacity .12s ease;
   }
   .btn:hover{ border-color:var(--accent); }
   .btn:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
+  /* pressed state — the only feedback that works on touch, where :hover never fires */
+  .btn:active:not(:disabled){ transform:scale(.96); background:var(--bg-sunken); border-color:var(--accent); }
+  .btn-accent:active:not(:disabled){ background:var(--accent-strong); border-color:var(--accent-strong); }
+  .btn:disabled{ cursor:default; opacity:.55; }
+  .btn:disabled:hover{ border-color:var(--border-strong); }
+  /* busy: label is swapped for a spinner while an async action is in flight */
+  .btn.is-busy{ cursor:progress; opacity:1; color:transparent; }
+  .btn.is-busy::after{
+    content:''; position:absolute; inset-block-start:calc(50% - 7px); inset-inline-start:calc(50% - 7px);
+    width:14px; height:14px; border-radius:50%; border:2px solid currentColor; border-top-color:transparent;
+    color:var(--text-primary); animation:btn-spin .6s linear infinite;
+  }
+  .btn-accent.is-busy::after{ color:var(--accent-ink-on); }
+  @keyframes btn-spin{ to{ transform:rotate(360deg); } }
   .btn-accent{ background:var(--accent); border-color:var(--accent); color:var(--accent-ink-on); font-weight:600; }
   .btn-accent:hover{ background:var(--accent-strong); border-color:var(--accent-strong); }
   .btn-ghost{ border-color:transparent; background:transparent; }
@@ -144,7 +160,13 @@
   }
   .splash-logo img{ width:100%; height:100%; object-fit:cover; display:block; }
   .splash-tag{ color:#CBA53C; font-size:12px; letter-spacing:2px; font-weight:700; }
-  @media (prefers-reduced-motion: reduce){ .splash-screen{ transition:none; } .splash-screen.hide{ transition:none; } }
+  @media (prefers-reduced-motion: reduce){
+    .splash-screen{ transition:none; } .splash-screen.hide{ transition:none; }
+    /* keep the press/busy feedback, drop the motion: colour change still reads as a press */
+    .btn, .fab, .client-item, .tab, .metric-chip{ transition:none; }
+    .btn:active:not(:disabled), .fab:active, .client-item:active, .metric-chip:active{ transform:none; }
+    .btn.is-busy::after{ animation-duration:1.6s; }
+  }
 
   /* layout: mobile-first single pane, toggled by [data-view] on .shell */
   .shell{ display:flex; flex:1; min-height:0; position:relative; }
@@ -170,6 +192,8 @@
     display:flex; align-items:center; justify-content:center; box-shadow:var(--shadow);
   }
   .fab:hover{ background:var(--accent-strong); }
+  .fab{ -webkit-tap-highlight-color:transparent; touch-action:manipulation; transition:transform .06s ease, background-color .12s ease; }
+  .fab:active{ transform:scale(.92); background:var(--accent-strong); }
   @media (min-width:760px){ .fab{ display:none; } }
 
   .rail-search{ padding:12px 14px 8px; }
@@ -186,6 +210,8 @@
     background:transparent; font-family:inherit; color:inherit; width:100%;
   }
   .client-item:hover{ background:var(--bg-sunken); }
+  .client-item{ -webkit-tap-highlight-color:transparent; touch-action:manipulation; transition:transform .06s ease, background-color .12s ease; }
+  .client-item:active{ transform:scale(.985); background:var(--accent-wash); }
   .client-item.active{ background:var(--accent-wash); border-color:var(--accent); }
   .client-item-text{ display:flex; flex-direction:column; gap:3px; min-width:0; }
   .client-name{ font-weight:600; font-size:14.5px; }
@@ -218,6 +244,8 @@
   }
   .tab.active{ color:var(--text-primary); border-bottom-color:var(--accent); font-weight:600; }
   .tab:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
+  .tab{ -webkit-tap-highlight-color:transparent; touch-action:manipulation; transition:color .12s ease, background-color .12s ease; }
+  .tab:active{ color:var(--text-primary); background:var(--bg-sunken); }
 
   .panel{ display:none; }
   .panel.active{ display:block; }
@@ -241,6 +269,8 @@
     text-align:start; border:1px solid var(--border); background:var(--bg-surface); border-radius:11px;
     padding:10px 12px; cursor:pointer; font-family:inherit; display:flex; flex-direction:column; gap:2px;
   }
+  .metric-chip{ -webkit-tap-highlight-color:transparent; touch-action:manipulation; transition:transform .06s ease, background-color .12s ease, border-color .12s ease; }
+  .metric-chip:active{ transform:scale(.97); border-color:var(--accent); background:var(--bg-sunken); }
   .metric-chip.active{ border-color:var(--accent); background:var(--accent-wash); }
   .metric-chip-label{ font-size:11.5px; color:var(--text-secondary); }
   .metric-chip-value{ font-size:17px; font-weight:600; font-variant-numeric:tabular-nums; }
@@ -594,6 +624,31 @@ var state = {
 var $ = function(sel, root){ return (root||document).querySelector(sel); };
 var $$ = function(sel, root){ return Array.prototype.slice.call((root||document).querySelectorAll(sel)); };
 
+/* Wire an async click handler so the button reports that it is working.
+   Without this the button looks completely idle during the network round-trip
+   (typically a few hundred ms), and stays clickable — so an impatient second
+   tap fires the same insert/delete twice. Locks the button, shows a spinner,
+   and always releases it again, including when the handler throws. */
+function onClickBusy(el, handler){
+  if(!el) return;
+  el.addEventListener('click', async function(ev){
+    if(el.disabled) return;
+    el.disabled = true;
+    el.classList.add('is-busy');
+    el.setAttribute('aria-busy', 'true');
+    try{
+      await handler.call(this, ev);
+    } catch(err){
+      alert('שגיאה בלתי צפויה: ' + ((err && err.message) || err));
+      throw err;
+    } finally {
+      el.disabled = false;
+      el.classList.remove('is-busy');
+      el.removeAttribute('aria-busy');
+    }
+  });
+}
+
 function getClient(id){ return state.clients.find(function(c){ return c.id===id; }); }
 function bmiFor(client, weight){
   if(!client.height || !weight) return null;
@@ -861,7 +916,7 @@ function renderMain(){
   $('[data-panel="'+state.activeTab+'"]', main).classList.add('active');
 
   $('#btnEditClient').addEventListener('click', function(){ openClientForm(client); });
-  $('#btnDeleteClient').addEventListener('click', async function(){
+  onClickBusy($('#btnDeleteClient'), async function(){
     if(confirm('למחוק את '+client.name+' וכל ההיסטוריה שלו? פעולה זו בלתי הפיכה.')){
       var res = await sb.from('clients').delete().eq('id', client.id);
       if(res.error){ alert('שגיאה במחיקת הלקוח: '+res.error.message); return; }
@@ -945,7 +1000,7 @@ function renderMeasurementsPanel(panel, client){
     });
   });
   $$('[data-del]', rows).forEach(function(b){
-    b.addEventListener('click', async function(){
+    onClickBusy(b, async function(){
       if(confirm('למחוק את המדידה מתאריך '+fmtDate(client.measurements.find(function(m){return m.id===b.dataset.del;}).date)+'?')){
         var res = await sb.from('measurements').delete().eq('id', b.dataset.del);
         if(res.error){ alert('שגיאה במחיקת המדידה: '+res.error.message); return; }
@@ -1064,7 +1119,7 @@ function renderTrainingNotes(panel, client, viewing, sortedPlans){
     });
   });
   $$('[data-del-note]', rows).forEach(function(b){
-    b.addEventListener('click', async function(){
+    onClickBusy(b, async function(){
       if(confirm('למחוק את ההערה?')){
         var res = await sb.from('training_notes').delete().eq('id', b.dataset.delNote);
         if(res.error){ alert('שגיאה במחיקת ההערה: '+res.error.message); return; }
@@ -1196,7 +1251,7 @@ function openTrainingNoteForm(client, note){
   });
 
   $('#btnCancel').addEventListener('click', closeModal);
-  $('#btnSave').addEventListener('click', async function(){
+  onClickBusy($('#btnSave'), async function(){
     if(recording) stopRecording();
     var text = $('#f_notetext').value.trim();
     if(!text){ alert('יש להזין טקסט הערה'); return; }
@@ -1271,7 +1326,7 @@ function openClientForm(client){
   var foot = '<button class="btn" id="btnCancel">ביטול</button><button class="btn btn-accent" id="btnSave">שמירה</button>';
   openModal(isNew ? 'לקוח חדש' : 'עריכת פרטי לקוח', body, foot);
   $('#btnCancel').addEventListener('click', closeModal);
-  $('#btnSave').addEventListener('click', async function(){
+  onClickBusy($('#btnSave'), async function(){
     var name = $('#f_name').value.trim();
     if(!name){ alert('יש להזין שם מלא'); return; }
     var data = {
@@ -1326,7 +1381,7 @@ function openMeasurementForm(client, m){
     var bmi = bmiFor(client, w);
     $('#f_bmi_preview').textContent = bmi ? fmt(bmi) : '—';
   });
-  $('#btnSave').addEventListener('click', async function(){
+  onClickBusy($('#btnSave'), async function(){
     var num = function(id){ var val = parseFloat($(id).value); return isNaN(val) ? 0 : val; };
     var data = {
       date:$('#f_date').value, weight:num('#f_weight'), fat:num('#f_fat'), water:num('#f_water'), muscle:num('#f_muscle'),
@@ -1395,7 +1450,7 @@ function openPlanForm(client, plan){
     wireRemove();
   });
 
-  $('#btnSave').addEventListener('click', async function(){
+  onClickBusy($('#btnSave'), async function(){
     var exercises = $$('[data-ex-row]').map(function(row){
       var get = function(f){ return $('[data-f="'+f+'"]', row).value; };
       return {name:get('name'), sets:get('sets'), reps:get('reps'), weight:get('weight'), rest:get('rest'), notes:get('notes')};
@@ -1542,7 +1597,7 @@ function openSlotForm(){
     var v = $('#f_slot_start').value;
     $('#f_slot_end_preview').textContent = v ? addMinutesToTime(v, SLOT_LENGTH_MIN) : '—';
   });
-  $('#btnSave').addEventListener('click', async function(){
+  onClickBusy($('#btnSave'), async function(){
     var date = $('#f_slot_date').value, start = $('#f_slot_start').value;
     if(!date || !start){ alert('יש למלא תאריך ושעת התחלה'); return; }
     var end = addMinutesToTime(start, SLOT_LENGTH_MIN);
@@ -1637,7 +1692,7 @@ function renderOpenSlotsForTrainer(){
     return slotCardHtml(fmtDate(s.date)+' · '+s.startTime+'–'+s.endTime, '', '<button class="btn btn-accent btn-sm" data-book="'+s.id+'">קביעת תור</button>');
   }).join('')+'</div>';
   $$('[data-book]', container).forEach(function(b){
-    b.addEventListener('click', function(){ bookSlot(b.dataset.book); });
+    onClickBusy(b, function(){ return bookSlot(b.dataset.book); });
   });
 }
 function renderMyBookings(list){
@@ -1741,17 +1796,22 @@ async function doLogin(){
   var password = $('#loginPassword').value;
   if(!email || !password){ showLoginError('נא למלא אימייל וסיסמה'); return; }
   hideLoginError();
-  $('#btnLogin').disabled = true;
-  var res = await sb.auth.signInWithPassword({ email: email, password: password });
-  $('#btnLogin').disabled = false;
-  if(res.error){ showLoginError('התחברות נכשלה: '+res.error.message); return; }
-  await afterLogin(res.data.session);
+  var btn = $('#btnLogin');
+  if(btn.disabled) return;
+  btn.disabled = true; btn.classList.add('is-busy'); btn.setAttribute('aria-busy','true');
+  try{
+    var res = await sb.auth.signInWithPassword({ email: email, password: password });
+    if(res.error){ showLoginError('התחברות נכשלה: '+res.error.message); return; }
+    await afterLogin(res.data.session);
+  } finally {
+    btn.disabled = false; btn.classList.remove('is-busy'); btn.removeAttribute('aria-busy');
+  }
 }
 $('#btnLogin').addEventListener('click', doLogin);
 $('#loginPassword').addEventListener('keydown', function(e){ if(e.key === 'Enter') doLogin(); });
 $('#loginEmail').addEventListener('keydown', function(e){ if(e.key === 'Enter') $('#loginPassword').focus(); });
 
-$('#btnLogout').addEventListener('click', async function(){
+onClickBusy($('#btnLogout'), async function(){
   await sb.auth.signOut();
   location.reload();
 });

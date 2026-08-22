@@ -1,6 +1,7 @@
 // Supabase Edge Function: transcribes a recorded training-note audio clip via OpenAI's
-// gpt-4o-mini-transcribe model (better multilingual/Hebrew accuracy than the older whisper-1,
-// same /v1/audio/transcriptions endpoint).
+// whisper-1 model. (Tried gpt-4o-mini-transcribe first — handled clean synthetic Hebrew audio
+// fine but produced Arabic output on a real phone recording; whisper-1 is the more proven model
+// for language-hinted, real-world non-English audio, so reverted to it.)
 // Deploy via the Supabase dashboard's Edge Functions "Editor" (no CLI needed) — paste this file's
 // contents in as the function body, name the function "transcribe-audio".
 // Requires a secret named OPENAI_API_KEY (Project Settings -> Edge Functions -> Secrets).
@@ -39,7 +40,7 @@ Deno.serve(async (req) => {
     // type, which varies by browser) instead of hardcoding one — OpenAI needs the extension to
     // match the actual audio container or it fails to decode the file.
     upstreamForm.append("file", audio, audio.name || "note.webm");
-    upstreamForm.append("model", "gpt-4o-mini-transcribe");
+    upstreamForm.append("model", "whisper-1");
     upstreamForm.append("language", "he");
 
     const upstreamRes = await fetch("https://api.openai.com/v1/audio/transcriptions", {

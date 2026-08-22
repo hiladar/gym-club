@@ -35,7 +35,10 @@ Deno.serve(async (req) => {
     }
 
     const upstreamForm = new FormData();
-    upstreamForm.append("file", audio, "note.webm");
+    // Forward the client's actual filename/extension (it matches the recorded blob's real mime
+    // type, which varies by browser) instead of hardcoding one — OpenAI needs the extension to
+    // match the actual audio container or it fails to decode the file.
+    upstreamForm.append("file", audio, audio.name || "note.webm");
     upstreamForm.append("model", "gpt-4o-mini-transcribe");
     upstreamForm.append("language", "he");
 

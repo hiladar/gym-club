@@ -1546,8 +1546,22 @@ function goToSchedule(){
   history.pushState({topView:'schedule'}, '', location.href);
 }
 function goToMainNav(){
-  if(state.view !== 'schedule') return;
-  history.back(); /* popstate restores whatever main-shell state was there before */
+  /* "לקוחות" always means the client list itself. This used to call history.back(),
+     which restores whatever main-shell entry happened to precede the schedule view —
+     usually a client detail — so on a phone the menu item opened a client instead of
+     the list. It also returned early whenever the main shell was already showing,
+     which meant that from inside a client detail the item did nothing at all. */
+  var shell = $('#shell');
+  var isClient = currentUser.role === 'client';
+  var targetView = isClient ? 'detail' : 'list'; /* a client has one profile, no list */
+  if(state.view === 'main' && shell.getAttribute('data-view') === targetView) return;
+  state.view = 'main';
+  $('#scheduleShell').classList.add('hidden');
+  shell.classList.remove('hidden');
+  shell.setAttribute('data-view', targetView);
+  updateNavActive();
+  history.pushState(isClient ? {view:'detail', clientId:state.activeClientId} : {view:'list'}, '', location.href);
+  renderAll();
 }
 
 window.addEventListener('popstate', function(e){

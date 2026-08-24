@@ -910,14 +910,21 @@ function renderMain(){
     return;
   }
 
+  /* The goal line and the edit/delete actions belong to the profile itself, so they
+     show only on the סקירה tab. The name stays on every tab as context. */
+  var onOverview = state.activeTab === 'overview';
   main.innerHTML =
     '<button class="btn btn-sm btn-ghost back-btn" id="btnBackToList">→ חזרה לרשימה</button>'+
     '<div class="profile-head">'+
-      '<div><h2>'+client.name+'</h2><div class="profile-goal">'+(client.goal||'')+'</div></div>'+
-      '<div style="display:flex;gap:8px;">'+
-        '<button class="btn btn-sm edit-only" id="btnEditClient">עריכת פרטים</button>'+
-        '<button class="btn btn-sm btn-danger edit-only" id="btnDeleteClient">מחיקת לקוח</button>'+
+      '<div><h2>'+client.name+'</h2>'+
+        (onOverview ? '<div class="profile-goal">'+(client.goal||'')+'</div>' : '')+
       '</div>'+
+      (onOverview
+        ? '<div style="display:flex;gap:8px;">'+
+            '<button class="btn btn-sm edit-only" id="btnEditClient">עריכת פרטים</button>'+
+            '<button class="btn btn-sm btn-danger edit-only" id="btnDeleteClient">מחיקת לקוח</button>'+
+          '</div>'
+        : '')+
     '</div>'+
     '<div class="tabs">'+
       '<button class="tab" data-tab="overview">סקירה</button>'+
@@ -937,7 +944,7 @@ function renderMain(){
   });
   $('[data-panel="'+state.activeTab+'"]', main).classList.add('active');
 
-  $('#btnEditClient').addEventListener('click', function(){ openClientForm(client); });
+  if($('#btnEditClient')) $('#btnEditClient').addEventListener('click', function(){ openClientForm(client); });
   onClickBusy($('#btnDeleteClient'), async function(){
     if(confirm('למחוק את '+client.name+' וכל ההיסטוריה שלו? פעולה זו בלתי הפיכה.')){
       var res = await sb.from('clients').delete().eq('id', client.id);

@@ -597,6 +597,19 @@ function addMinutesToTime(hhmm, minutes){
   var h = Math.floor(total/60), m = total%60;
   return (h<10?'0':'')+h+':'+(m<10?'0':'')+m;
 }
+/* splits a "from"–"to" range into consecutive fixed-length slots, dropping any leftover */
+/* time too short for one more full slot (e.g. 09:00–17:10 with 50-min slots still stops at 17:00). */
+function generateSlotTimes(fromTime, toTime, lengthMin){
+  var times = [];
+  var t = fromTime;
+  while(true){
+    var end = addMinutesToTime(t, lengthMin);
+    if(end <= t || end > toTime) break; // end<=t guards a midnight wrap, not a real scenario for gym hours
+    times.push({start:t, end:end});
+    t = end;
+  }
+  return times;
+}
 
 async function loadState(){
   var res = await Promise.all([
@@ -1625,32 +1638,54 @@ function renderMySlotsSection(container){
     return slotCardHtml(fmtDate(s.date)+' · '+s.startTime+'–'+s.endTime, sub, slotChipHtml(s.status));
   }).join('');
 }
+/* form lets a trainer mark a whole block of hours available at once (e.g. 09:00–17:00) — added */
+/* 18.08.26 after real usage showed one-slot-at-a-time was tedious for a normal work block. It */
+/* auto-splits the range into consecutive fixed-length slots rather than one manual entry each. */
 function openSlotForm(){
   var today = new Date().toISOString().slice(0,10);
   var body =
+    '<div class="form-row"><label>תאריך</label><input type="date" id="f_slot_date" value="'+today+'"></div>'+
     '<div class="form-grid">'+
-      '<div class="form-row"><label>תאריך</label><input type="date" id="f_slot_date" value="'+today+'"></div>'+
-      '<div class="form-row"><label>שעת התחלה</label><input type="time" id="f_slot_start" value="09:00"></div>'+
-      '<div class="form-row"><label>שעת סיום (מחושב, '+SLOT_LENGTH_MIN+' דק׳)</label><div class="field-value" id="f_slot_end_preview">'+addMinutesToTime('09:00', SLOT_LENGTH_MIN)+'</div></div>'+
-    '</div>';
+      '<div class="form-row"><label>משעה</label><input type="time" id="f_slot_from" value="09:00"></div>'+
+      '<div class="form-row"><label>עד שעה</label><input type="time" id="f_slot_to" value="17:00"></div>'+
+    '</div>'+
+    '<div class="field-value" id="f_slot_preview" style="margin-top:4px;"></div>';
   var foot = '<button class="btn" id="btnCancel">ביטול</button><button class="btn btn-accent" id="btnSave">שמירה</button>';
-  openModal('משבצת זמן חדשה', body, foot);
+  openModal('הוספת משבצות זמן', body, foot);
   $('#btnCancel').addEventListener('click', closeModal);
-  $('#f_slot_start').addEventListener('input', function(){
-    var v = $('#f_slot_start').value;
-    $('#f_slot_end_preview').textContent = v ? addMinutesToTime(v, SLOT_LENGTH_MIN) : '—';
-  });
+  function updatePreview(){
+    var from = $('#f_slot_from').value, to = $('#f_slot_to').value;
+    var el = $('#f_slot_preview');
+    if(!from || !to){ el.textContent = ''; return; }
+    if(to <= from){ el.textContent = 'שעת הסיום חייבת להיות אחרי שעת ההתחלה.'; return; }
+    var times = generateSlotTimes(from, to, SLOT_LENGTH_MIN);
+    el.textContent = times.length
+      ? 'ייווצרו '+times.length+' משבצות (כל אחת '+SLOT_LENGTH_MIN+' דק׳): '+times.map(function(t){ return t.start; }).join(', ')
+      : 'הטווח קצר מדי ליצירת ולו משבצת אחת ('+SLOT_LENGTH_MIN+' דק׳).';
+  }
+  $('#f_slot_from').addEventListener('input', updatePreview);
+  $('#f_slot_to').addEventListener('input', updatePreview);
+  updatePreview();
   onClickBusy($('#btnSave'), async function(){
-    var date = $('#f_slot_date').value, start = $('#f_slot_start').value;
-    if(!date || !start){ alert('יש למלא תאריך ושעת התחלה'); return; }
-    var end = addMinutesToTime(start, SLOT_LENGTH_MIN);
-    var res = await sb.from('training_slots').insert({
-      trainer_id: currentUser.trainerId, date: date, start_time: start, end_time: end, status: 'open'
-    }).select().single();
-    if(res.error){ alert('שגיאה בשמירת המשבצת (ייתכן שכבר קיימת משבצת באותו תאריך/שעה): '+res.error.message); return; }
-    state.slots.push(slotFromRow(res.data));
+    var date = $('#f_slot_date').value, from = $('#f_slot_from').value, to = $('#f_slot_to').value;
+    if(!date || !from || !to){ alert('יש למלא תאריך, שעת התחלה ושעת סיום'); return; }
+    var times = generateSlotTimes(from, to, SLOT_LENGTH_MIN);
+    if(!times.length){ alert('הטווח קצר מדי ליצירת משבצת אחת לפחות ('+SLOT_LENGTH_MIN+' דק׳).'); return; }
+    var rows = times.map(function(t){
+      return { trainer_id: currentUser.trainerId, date: date, start_time: t.start, end_time: t.end, status: 'open' };
+    });
+    var res = await sb.from('training_slots')
+      .upsert(rows, { onConflict: 'trainer_id,date,start_time', ignoreDuplicates: true })
+      .select();
+    if(res.error){ alert('שגיאה בשמירת המשבצות: '+res.error.message); return; }
+    var created = res.data || [];
+    created.forEach(function(row){ state.slots.push(slotFromRow(row)); });
     closeModal();
     renderSchedule();
+    var skipped = rows.length - created.length;
+    if(skipped > 0){
+      alert('נוצרו '+created.length+' משבצות חדשות. '+skipped+' משבצות בטווח כבר היו קיימות ודולגו.');
+    }
   });
 }
 

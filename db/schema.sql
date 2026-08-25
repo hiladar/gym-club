@@ -9,6 +9,9 @@ create table trainers (
   auth_user_id  uuid unique references auth.users(id) on delete set null,
   full_name     text not null,
   role          text not null default 'trainer' check (role in ('owner','trainer')),
+  email         text, -- added 25.08.26: contact address for booking-notification emails (notify-booking),
+                       -- separate from auth_user_id's login email — a trainer may want notifications at a
+                       -- different address than they log in with, or may not have a login account at all yet.
   created_at    timestamptz not null default now()
 );
 

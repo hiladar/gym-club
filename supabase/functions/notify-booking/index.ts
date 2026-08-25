@@ -87,14 +87,17 @@ Deno.serve(async (req) => {
   }
 
   const [{ data: trainer, error: trainerErr }, { data: client, error: clientErr }] = await Promise.all([
-    admin.from("trainers").select("id, full_name, auth_user_id").eq("id", slot.trainer_id).maybeSingle(),
+    admin.from("trainers").select("id, full_name, auth_user_id, email").eq("id", slot.trainer_id).maybeSingle(),
     admin.from("clients").select("id, full_name, email").eq("id", slot.client_id).maybeSingle(),
   ]);
   if (trainerErr) return json({ error: trainerErr.message }, 500);
   if (clientErr) return json({ error: clientErr.message }, 500);
 
-  let trainerEmail: string | null = null;
-  if (trainer?.auth_user_id) {
+  // prefer the trainer's dedicated contact email (added 25.08.26); fall back to their
+  // login email only if that field was never filled in, so nothing regresses for trainers
+  // set up before this column existed.
+  let trainerEmail: string | null = trainer?.email || null;
+  if (!trainerEmail && trainer?.auth_user_id) {
     const { data: authUser } = await admin.auth.admin.getUserById(trainer.auth_user_id);
     trainerEmail = authUser?.user?.email || null;
   }

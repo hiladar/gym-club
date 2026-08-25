@@ -179,9 +179,11 @@ language sql stable security definer as $$
   select exists (select 1 from clients where auth_user_id = auth.uid());
 $$;
 
--- trainers: owner manages all rows; a trainer can see (not edit) their own row.
+-- trainers: owner manages all rows; a trainer can see (not edit) their own row; a client
+-- can see trainer names too — needed so the client's "book a session" screen can list
+-- trainers to pick from (trainer full_name isn't sensitive, this is a small private club).
 create policy trainers_select on trainers for select
-  using (is_owner() or auth_user_id = auth.uid());
+  using (is_owner() or auth_user_id = auth.uid() or is_any_client());
 create policy trainers_modify on trainers for all
   using (is_owner()) with check (is_owner());
 

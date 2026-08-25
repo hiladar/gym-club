@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>תיאום אימונים — כיווני תצוגה</title>
+<style>
+  /* Mockup only. Tokens copied from deploy/index.html so the screens read like the real app.
+     The real app embeds Noto Sans Hebrew; here we fall back to the system Hebrew stack. */
+  html,body{ margin:0; padding:0; }
+  .sched, .sched *{ box-sizing:border-box; }
+  .sched{
+    --bg-page:#F2EFE7; --bg-surface:#FFFFFF; --bg-sunken:#EAE6D9;
+    --text-primary:#2A2A26; --text-secondary:#5E5C52; --text-muted:#8B8878;
+    --border:rgba(42,42,38,0.12); --border-strong:rgba(42,42,38,0.18);
+    --accent:#1E3A8A; --accent-strong:#152C6B; --accent-wash:rgba(30,58,138,0.12); --accent-ink-on:#FFFFFF;
+    --warn:#a5720a; --warn-bg:#fdf1da;
+    direction:rtl; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Segoe UI Hebrew",Roboto,"Helvetica Neue",Arial,sans-serif;
+    background:var(--bg-page); color:var(--text-primary); min-height:100vh; line-height:1.5; padding-bottom:60px;
+  }
+  @media (prefers-color-scheme: dark){
+    .sched:where(:not([data-theme="light"])){
+      --bg-page:#141311; --bg-surface:#1E1D19; --bg-sunken:#211F1A;
+      --text-primary:#EDEAE0; --text-secondary:#B9B6A9; --text-muted:#8C8A7C;
+      --border:rgba(237,234,224,0.12); --border-strong:rgba(237,234,224,0.18);
+      --accent:#3B5FC4; --accent-strong:#5578DE; --accent-wash:rgba(59,95,196,0.18);
+      --warn:#e0ad4d; --warn-bg:#3a2f14;
+    }
+  }
+  .sched[data-theme="dark"]{
+    --bg-page:#141311; --bg-surface:#1E1D19; --bg-sunken:#211F1A;
+    --text-primary:#EDEAE0; --text-secondary:#B9B6A9; --text-muted:#8C8A7C;
+    --border:rgba(237,234,224,0.12); --border-strong:rgba(237,234,224,0.18);
+    --accent:#3B5FC4; --accent-strong:#5578DE; --accent-wash:rgba(59,95,196,0.18);
+    --warn:#e0ad4d; --warn-bg:#3a2f14;
+  }
+  .sched h1,.sched h2,.sched h3{ margin:0; font-weight:600; }
+
+  .intro{ max-width:960px; margin:0 auto; padding:32px 20px 4px; }
+  .intro h1{ font-size:22px; margin-bottom:8px; }
+  .intro p{ font-size:14.5px; color:var(--text-secondary); margin:0 0 8px; max-width:64ch; }
+  .theme-row{ display:flex; gap:6px; margin-top:14px; }
+  .theme-row button{
+    font:inherit; font-size:12.5px; padding:6px 12px; border-radius:100px; cursor:pointer;
+    border:1px solid var(--border-strong); background:var(--bg-surface); color:var(--text-primary);
+  }
+
+  .opt{ border-top:1px solid var(--border); margin-top:36px; padding-top:30px; }
+  .opt-head{ max-width:960px; margin:0 auto 20px; padding:0 20px; }
+  .opt-head .tag{ font-size:11px; letter-spacing:.6px; color:var(--text-muted); font-weight:600; }
+  .opt-head h2{ font-size:20px; margin:4px 0 6px; }
+  .opt-head p{ font-size:14px; color:var(--text-secondary); max-width:64ch; margin:0; }
+  .opt-head .verdict{ font-size:13px; margin-top:8px; color:var(--text-secondary); }
+  .opt-head .verdict b{ color:var(--text-primary); }
+
+  .frames{ max-width:1280px; margin:0 auto; padding:0 20px; display:flex; gap:22px; flex-wrap:wrap; align-items:flex-start; }
+  .frame-wrap{ flex:0 0 auto; }
+  .frame-label{ font-size:12px; color:var(--text-muted); margin-bottom:8px; }
+  .frame{
+    width:390px; height:620px; overflow-y:auto; background:var(--bg-page);
+    border:1px solid var(--border-strong); border-radius:22px; padding:16px;
+  }
+
+  /* ---- real-app classes, copied ---- */
+  .profile-head{ margin-bottom:14px; }
+  .profile-head h2{ font-size:21px; }
+  .profile-goal{ color:var(--text-secondary); font-size:13.5px; margin-top:3px; }
+  .card{ background:var(--bg-surface); border:1px solid var(--border); border-radius:12px; padding:14px 16px; }
+  .section-title{ font-size:13px; color:var(--text-muted); letter-spacing:.5px; margin:20px 0 10px; }
+  .client-sub{ font-size:12px; color:var(--text-muted); }
+  .chip{ display:inline-flex; align-items:center; font-size:11px; font-weight:600; padding:2px 7px; border-radius:100px; white-space:nowrap; }
+  .chip-open{ background:var(--accent-wash); color:var(--accent); }
+  .chip-warn{ background:var(--warn-bg); color:var(--warn); }
+  .btn{
+    font:inherit; appearance:none; border:1px solid var(--border-strong); background:var(--bg-surface);
+    color:var(--text-primary); padding:9px 16px; border-radius:8px; font-size:14px; min-height:40px; cursor:pointer; white-space:nowrap;
+  }
+  .btn-accent{ background:var(--accent); border-color:var(--accent); color:var(--accent-ink-on); font-weight:600; }
+  .btn-sm{ padding:7px 12px; font-size:12.5px; border-radius:6px; min-height:34px; }
+  .btn-block{ width:100%; justify-content:center; }
+  .select{
+    font:inherit; width:100%; padding:10px 12px; border-radius:8px; border:1px solid var(--border-strong);
+    background:var(--bg-sunken); color:var(--text-primary); font-size:15px; min-height:44px;
+  }
+  .tabs{ display:flex; gap:4px; border-bottom:1px solid var(--border); margin-bottom:16px; }
+  .tab{ font:inherit; padding:10px 12px; background:none; border:none; cursor:pointer; font-size:14px;
+        color:var(--text-muted); border-bottom:2px solid transparent; }
+  .tab.active{ color:var(--text-primary); border-bottom-color:var(--accent); font-weight:600; }
+  .slot-card{
+    background:var(--bg-surface); border:1px solid var(--border); border-radius:12px;
+    padding:12px 14px; margin-bottom:8px; display:flex; align-items:center; justify-content:space-between; gap:10px;
+  }
+  .slot-card b{ font-weight:600; font-size:14.5px; }
+
+  /* ---- proposed: day strip ---- */
+  .daystrip{ display:flex; gap:6px; overflow-x:auto; padding-bottom:4px; margin-bottom:14px; scrollbar-width:none; }
+  .daystrip::-webkit-scrollbar{ display:none; }
+  .day{
+    font:inherit; flex:0 0 auto; width:52px; padding:7px 0 6px; cursor:pointer; text-align:center;
+    border:1px solid var(--border); border-radius:11px; background:var(--bg-surface); color:var(--text-primary);
+  }
+  .day .dow{ font-size:11px; color:var(--text-secondary); }
+  .day .num{ font-size:17px; font-weight:600; font-variant-numeric:tabular-nums; line-height:1.2; }
+  .day .cnt{ font-size:10px; color:var(--text-muted); }
+  .day.active{ background:var(--accent); border-color:var(--accent); }
+  .day.active .dow,.day.active .num,.day.active .cnt{ color:var(--accent-ink-on); }
+  .day.empty{ opacity:.45; }
+  .day-title{ font-size:13.5px; color:var(--text-secondary); margin-bottom:10px; }
+
+  /* ---- proposed: time chips ---- */
+  .timegrid{ display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+  .timegrid.two{ grid-template-columns:repeat(2,1fr); }
+  .t{
+    font:inherit; cursor:pointer; text-align:center; padding:11px 4px; border-radius:10px;
+    border:1px solid var(--border); background:var(--bg-surface); color:var(--text-primary);
+    font-size:14px; font-variant-numeric:tabular-nums; line-height:1.3;
+  }
+  .t small{ display:block; font-size:10.5px; font-weight:400; opacity:.85; }
+  .t.open{ background:var(--accent-wash); border-color:var(--accent); color:var(--accent); font-weight:600; }
+  .t.booked{ background:var(--warn-bg); border-color:var(--warn-bg); color:var(--warn); }
+  .t.past{ color:var(--text-muted); border-style:dashed; cursor:default; }
+  .t.sel{ background:var(--accent); border-color:var(--accent); color:var(--accent-ink-on); font-weight:600; }
+  .legend{ display:flex; gap:14px; margin-top:12px; font-size:11.5px; color:var(--text-secondary); }
+  .legend i{ display:inline-block; width:9px; height:9px; border-radius:3px; margin-left:5px; vertical-align:0; font-style:normal; }
+  .confirm{ margin-top:14px; padding-top:12px; border-top:1px solid var(--border); }
+
+  /* ---- option B: grouped list ---- */
+  .dayhead{
+    position:sticky; top:-16px; background:var(--bg-page); padding:8px 2px 6px; margin-top:10px;
+    font-size:13px; font-weight:600; display:flex; justify-content:space-between; align-items:baseline;
+  }
+  .dayhead span{ font-size:11.5px; font-weight:400; color:var(--text-muted); }
+</style>
+</head>
+<body>
+<div class="sched" id="root">
+
+  <div class="intro">
+    <h1>תיאום אימונים — כיווני תצוגה</h1>
+    <p>היום כל משבצת של 50 דקות מקבלת כרטיס ברוחב מלא, והתאריך חוזר על עצמו בכל כרטיס. יום עבודה של 09:00–17:00 = 9 כרטיסים; שבוע של שני מאמנים ≈ 90 כרטיסים ברשימה כרונולוגית אחת ללא חלוקה לימים.</p>
+    <p>שני הכיוונים למטה מניחים את אותו מודל נתונים הקיים היום (<code>training_slots</code>, משבצת = 50 דק׳) — אין שינוי סכימה.</p>
+    <div class="theme-row">
+      <button data-theme-set="light">בהיר</button>
+      <button data-theme-set="dark">כהה</button>
+      <button data-theme-set="">מערכת</button>
+    </div>
+  </div>
+
+  <div class="opt">
+    <div class="opt-head">
+      <span class="tag">מצב קיים</span>
+      <h2>רשימה כרונולוגית שטוחה</h2>
+      <p>לצורך השוואה — כך זה נראה עכשיו במסך של הלקוח ושל המאמן.</p>
+    </div>
+    <div class="frames">
+      <div class="frame-wrap"><div class="frame-label">לקוח — קביעת תור</div><div class="frame" id="cur-client"></div></div>
+      <div class="frame-wrap"><div class="frame-label">מאמן — המשבצות שלי</div><div class="frame" id="cur-trainer"></div></div>
+    </div>
+  </div>
+
+  <div class="opt">
+    <div class="opt-head">
+      <span class="tag">כיוון א׳ — מומלץ</span>
+      <h2>בורר יום + רשת שעות</h2>
+      <p>שורת ימים נגללת לרוחב (עם מספר המשבצות הפנויות מתחת לכל יום) ומתחתיה רשת שעות ליום הנבחר. יום שלם נכנס למסך אחד בלי גלילה, והתאריך מופיע פעם אחת במקום תשע.</p>
+      <p class="verdict"><b>למה לא לוח חודשי:</b> באפליקציה מובייל־ראשונה בעברית, רשת 7×9 בטלפון של 375px נותנת תא של ~45px — לא נכנס בו שם. זו הסיבה שכל אפליקציות התורים התכנסו לדפוס הזה.</p>
+    </div>
+    <div class="frames">
+      <div class="frame-wrap"><div class="frame-label">לקוח — קביעת תור</div><div class="frame" id="new-client"></div></div>
+      <div class="frame-wrap"><div class="frame-label">מאמן — המשבצות שלי</div><div class="frame" id="new-trainer"></div></div>
+      <div class="frame-wrap"><div class="frame-label">בעלים — כל המאמנים</div><div class="frame" id="new-owner"></div></div>
+    </div>
+  </div>
+
+  <div class="opt">
+    <div class="opt-head">
+      <span class="tag">כיוון ב׳ — שינוי מינימלי</span>
+      <h2>אותה רשימה, מקובצת לפי יום</h2>
+      <p>הרשימה נשארת, אבל עם כותרת יום דביקה וכרטיס דחוס יותר (השעה בלבד, בלי חזרה על התאריך). פחות עבודה ופחות סיכון, אבל עדיין גלילה — 9 שורות ליום.</p>
+      <p class="verdict"><b>מתי לבחור:</b> אם רוצים לשחרר את זה מהר ולראות אם הצפיפות לבדה פותרת את הבעיה.</p>
+    </div>
+    <div class="frames">
+      <div class="frame-wrap"><div class="frame-label">לקוח — קביעת תור</div><div class="frame" id="alt-client"></div></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+(function(){
+  var DAYS = [
+    { key:'24', dow:'א׳', num:'24', label:'א׳ 24.08.26' },
+    { key:'25', dow:'ב׳', num:'25', label:'ב׳ 25.08.26' },
+    { key:'26', dow:'ג׳', num:'26', label:'ג׳ 26.08.26' },
+    { key:'27', dow:'ד׳', num:'27', label:'ד׳ 27.08.26' },
+    { key:'28', dow:'ה׳', num:'28', label:'ה׳ 28.08.26' },
+    { key:'29', dow:'ו׳', num:'29', label:'ו׳ 29.08.26' }
+  ];
+  var TIMES = ['09:00','09:50','10:40','11:30','12:20','13:10','14:00','14:50','15:40'];
+  var END = { '09:00':'09:50','09:50':'10:40','10:40':'11:30','11:30':'12:20','12:20':'13:10',
+              '13:10':'14:00','14:00':'14:50','14:50':'15:40','15:40':'16:30' };
+  /* status: open | booked | past ; booked slots carry a client name */
+  var DATA = {
+    '24': { '09:00':'past','09:50':'past','10:40':'past','11:30':'past','12:20':'past',
+            '13:10':'past','14:00':'open','14:50':'booked:דנה לוי','15:40':'open' },
+    '25': { '09:00':'open','09:50':'booked:דנה לוי','10:40':'open','11:30':'open','12:20':'booked:יוסי כהן',
+            '13:10':'past','14:00':'open','14:50':'open','15:40':'booked:מיכל ברק' },
+    '26': { '09:00':'open','09:50':'open','10:40':'open','11:30':'open','12:20':'open',
+            '13:10':'open','14:00':'open','14:50':'open','15:40':'open' },
+    '27': { '09:00':'open','09:50':'open','10:40':'booked:יוסי כהן','11:30':'open','12:20':'open',
+            '13:10':'open','14:00':'open','14:50':'open','15:40':'open' },
+    '28': {},
+    '29': { '09:00':'open','09:50':'open','10:40':'open','11:30':'open','12:20':'booked:מיכל ברק',
+            '13:10':'open','14:00':'open','14:50':'open','15:40':'open' }
+  };
+  var OWNER = { 'רועי אבני':'25', 'שירן מזרחי':'25' };
+
+  function st(day, t){ var v = (DATA[day]||{})[t]; return v ? v.split(':')[0] : null; }
+  function who(day, t){ var v = (DATA[day]||{})[t]||''; return v.indexOf('booked:')===0 ? v.slice(7) : ''; }
+  function openCount(day){
+    return TIMES.filter(function(t){ return st(day,t)==='open'; }).length;
+  }
+  function allSlots(){
+    var out = [];
+    DAYS.forEach(function(d){ TIMES.forEach(function(t){ if(st(d.key,t)) out.push({d:d,t:t,s:st(d.key,t),w:who(d.key,t)}); }); });
+    return out;
+  }
+
+  /* ===== current state ===== */
+  function renderCurrentClient(el){
+    var rows = allSlots().filter(function(x){ return x.s==='open'; }).map(function(x){
+      return '<div class="slot-card"><div><b>'+x.d.label+' · '+x.t+'–'+END[x.t]+'</b></div>'+
+             '<button class="btn btn-accent btn-sm">קביעת תור</button></div>';
+    }).join('');
+    el.innerHTML =
+      '<div class="profile-head"><h2>תיאום אימונים</h2><div class="profile-goal">קביעת תור עם מאמן/ת</div></div>'+
+      '<div class="card"><div class="client-sub" style="margin-bottom:6px;">בחר/י מאמן/ת</div>'+
+      '<select class="select"><option>רועי אבני</option></select>'+
+      '<div style="margin-top:12px;">'+rows+'</div></div>';
+  }
+  function renderCurrentTrainer(el){
+    var rows = allSlots().map(function(x){
+      var sub = x.s==='booked' ? 'נקבע עם: '+x.w : 'פנוי לקביעה';
+      var chip = x.s==='booked' ? '<span class="chip chip-warn">תפוס</span>' : '<span class="chip chip-open">פנוי</span>';
+      return '<div class="slot-card"><div><b>'+x.d.label+' · '+x.t+'–'+END[x.t]+'</b>'+
+             '<div class="client-sub">'+sub+'</div></div>'+chip+'</div>';
+    }).join('');
+    el.innerHTML =
+      '<div class="profile-head"><h2>תיאום אימונים</h2><div class="profile-goal">משבצות הזמן שלך</div></div>'+
+      '<div class="tabs"><button class="tab active">המשבצות שלי</button><button class="tab">כל המאמנים</button></div>'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">'+
+        '<div class="section-title" style="margin:0;">המשבצות שלי</div>'+
+        '<button class="btn btn-accent btn-sm">+ משבצת חדשה</button></div>'+ rows;
+  }
+
+  /* ===== option A ===== */
+  function stripHtml(sel, name){
+    return '<div class="daystrip">'+DAYS.map(function(d){
+      var n = openCount(d.key);
+      return '<button class="day'+(d.key===sel?' active':'')+(n===0?' empty':'')+'" data-strip="'+name+'" data-day="'+d.key+'">'+
+        '<div class="dow">'+d.dow+'</div><div class="num">'+d.num+'</div>'+
+        '<div class="cnt">'+(n?n+' פנוי':'—')+'</div></button>';
+    }).join('')+'</div>';
+  }
+  function legendHtml(withPast){
+    return '<div class="legend"><span><i style="background:var(--accent)"></i>פנוי</span>'+
+      '<span><i style="background:var(--warn)"></i>תפוס</span>'+
+      (withPast?'<span><i style="background:var(--border-strong)"></i>עבר</span>':'')+'</div>';
+  }
+  var stateA = { client:'25', trainer:'25', pick:null };
+
+  function renderNewClient(el){
+    var day = stateA.client, d = DAYS.filter(function(x){ return x.key===day; })[0];
+    var grid = TIMES.map(function(t){
+      var s = st(day,t);
+      if(!s) return '';
+      if(s!=='open') return '<div class="t '+(s==='past'?'past':'booked')+'">'+t+'<small>'+(s==='past'?'עבר':'תפוס')+'</small></div>';
+      var selected = stateA.pick===t;
+      return '<button class="t '+(selected?'sel':'open')+'" data-pick="'+t+'">'+t+'</button>';
+    }).join('');
+    var body = grid
+      ? '<div class="day-title">'+d.label+'</div><div class="timegrid">'+grid+'</div>'+legendHtml(true)
+      : '<p class="client-sub" style="margin-top:10px;">אין משבצות פנויות ביום זה.</p>';
+    var confirm = stateA.pick
+      ? '<div class="confirm"><button class="btn btn-accent btn-block">קביעת תור · '+d.label+' '+stateA.pick+'–'+END[stateA.pick]+'</button></div>'
+      : '';
+    el.innerHTML =
+      '<div class="profile-head"><h2>תיאום אימונים</h2><div class="profile-goal">קביעת תור עם מאמן/ת</div></div>'+
+      '<div class="card"><div class="client-sub" style="margin-bottom:6px;">בחר/י מאמן/ת</div>'+
+        '<select class="select"><option>רועי אבני</option></select>'+
+        '<div style="margin-top:14px;">'+stripHtml(day,'client')+body+confirm+'</div></div>'+
+      '<div class="section-title">התורים שלי</div>'+
+      '<div class="slot-card"><div><b>ג׳ 26.08.26 · 11:30–12:20</b><div class="client-sub">עם רועי אבני</div></div></div>';
+    bindStrip(el,'client');
+    Array.prototype.forEach.call(el.querySelectorAll('[data-pick]'), function(b){
+      b.addEventListener('click', function(){
+        stateA.pick = (stateA.pick===b.dataset.pick ? null : b.dataset.pick);
+        renderNewClient(el);
+      });
+    });
+  }
+  function renderNewTrainer(el){
+    var day = stateA.trainer, d = DAYS.filter(function(x){ return x.key===day; })[0];
+    var grid = TIMES.map(function(t){
+      var s = st(day,t);
+      if(!s) return '';
+      if(s==='booked') return '<button class="t booked">'+t+'<small>'+who(day,t)+'</small></button>';
+      if(s==='past') return '<div class="t past">'+t+'<small>עבר</small></div>';
+      return '<div class="t open">'+t+'<small>פנוי</small></div>';
+    }).join('');
+    var body = grid
+      ? '<div class="timegrid two">'+grid+'</div>'+legendHtml(true)
+      : '<p class="client-sub">אין משבצות ביום זה. הוסיפו בלוק שעות.</p>';
+    el.innerHTML =
+      '<div class="profile-head"><h2>תיאום אימונים</h2><div class="profile-goal">משבצות הזמן שלך</div></div>'+
+      '<div class="tabs"><button class="tab active">המשבצות שלי</button><button class="tab">כל המאמנים</button></div>'+
+      stripHtml(day,'trainer')+
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin:4px 0 10px;">'+
+        '<div class="day-title" style="margin:0;">'+d.label+'</div>'+
+        '<button class="btn btn-accent btn-sm">+ משבצות</button></div>'+ body;
+    bindStrip(el,'trainer');
+  }
+  function renderNewOwner(el){
+    var day = stateA.owner || '25', d = DAYS.filter(function(x){ return x.key===day; })[0];
+    var sections = Object.keys(OWNER).map(function(name, i){
+      var grid = TIMES.map(function(t){
+        var s = st(day,t);
+        /* second trainer gets a shifted pattern so the two columns differ */
+        if(i===1) s = (t==='09:00'||t==='11:30'||t==='14:50') ? 'booked' : (s==='booked' ? 'open' : s);
+        if(!s) return '';
+        if(s==='booked') return '<div class="t booked">'+t+'</div>';
+        if(s==='past') return '<div class="t past">'+t+'</div>';
+        return '<div class="t open">'+t+'</div>';
+      }).join('');
+      return '<div class="section-title" style="margin:16px 0 8px;">'+name+'</div>'+
+             (grid ? '<div class="timegrid">'+grid+'</div>' : '<p class="client-sub">אין משבצות</p>');
+    }).join('');
+    el.innerHTML =
+      '<div class="profile-head"><h2>תיאום אימונים</h2><div class="profile-goal">משבצות כל המאמנים</div></div>'+
+      '<div class="tabs"><button class="tab">המשבצות שלי</button><button class="tab active">כל המאמנים</button></div>'+
+      stripHtml(day,'owner')+
+      '<div class="day-title">'+d.label+'</div>'+ sections + legendHtml(true);
+    bindStrip(el,'owner');
+  }
+  function bindStrip(el, name){
+    Array.prototype.forEach.call(el.querySelectorAll('[data-strip="'+name+'"]'), function(b){
+      b.addEventListener('click', function(){
+        stateA[name] = b.dataset.day;
+        if(name==='client') stateA.pick = null;
+        renderAll();
+      });
+    });
+  }
+
+  /* ===== option B ===== */
+  function renderAltClient(el){
+    var html = DAYS.map(function(d){
+      var rows = TIMES.filter(function(t){ return st(d.key,t)==='open'; }).map(function(t){
+        return '<div class="slot-card" style="padding:9px 12px;margin-bottom:6px;">'+
+          '<b style="font-variant-numeric:tabular-nums;">'+t+'–'+END[t]+'</b>'+
+          '<button class="btn btn-accent btn-sm">קביעה</button></div>';
+      }).join('');
+      if(!rows) return '';
+      var n = openCount(d.key);
+      return '<div class="dayhead">'+d.label+'<span>'+n+' פנויות</span></div>'+rows;
+    }).join('');
+    el.innerHTML =
+      '<div class="profile-head"><h2>תיאום אימונים</h2><div class="profile-goal">קביעת תור עם מאמן/ת</div></div>'+
+      '<div class="card" style="margin-bottom:12px;"><div class="client-sub" style="margin-bottom:6px;">בחר/י מאמן/ת</div>'+
+      '<select class="select"><option>רועי אבני</option></select></div>'+ html;
+  }
+
+  function renderAll(){
+    renderCurrentClient(document.getElementById('cur-client'));
+    renderCurrentTrainer(document.getElementById('cur-trainer'));
+    renderNewClient(document.getElementById('new-client'));
+    renderNewTrainer(document.getElementById('new-trainer'));
+    renderNewOwner(document.getElementById('new-owner'));
+    renderAltClient(document.getElementById('alt-client'));
+  }
+  renderAll();
+
+  Array.prototype.forEach.call(document.querySelectorAll('[data-theme-set]'), function(b){
+    b.addEventListener('click', function(){
+      var v = b.dataset.themeSet;
+      if(v) document.getElementById('root').setAttribute('data-theme', v);
+      else document.getElementById('root').removeAttribute('data-theme');
+    });
+  });
+})();
+</script>
+</body>
+</html>

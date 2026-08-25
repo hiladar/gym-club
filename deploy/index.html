@@ -611,6 +611,35 @@ function generateSlotTimes(fromTime, toTime, lengthMin){
   return times;
 }
 
+/* --- "past slot" guards (added 25.08.26) --- a trainer cannot open a slot that already
+   happened, and a client is never offered one. Deliberately uses the DEVICE's local clock
+   (getFullYear/getHours), not toISOString(), which is UTC: at 22:00 Israel time UTC is
+   already the next day, so a UTC "today" would let a trainer open slots for hours that
+   have passed. Server-side the same rule lives in the RLS policies (see
+   supabase/migrations/2026-08-25_slots_no_past.sql) — this is the UX half of it. */
+function pad2(n){ return (n<10?'0':'')+n; }
+function todayStr(){
+  var d = new Date();
+  return d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate());
+}
+function nowTimeStr(){
+  var d = new Date();
+  return pad2(d.getHours())+':'+pad2(d.getMinutes());
+}
+/* a slot is "past" once its START time has arrived — an already-running session is not
+   something a client should still be able to book. */
+function isPastSlot(slot){
+  var today = todayStr();
+  if(slot.date !== today) return slot.date < today;
+  return slot.startTime <= nowTimeStr();
+}
+/* drops the times that already passed when the chosen date is today; other dates pass through. */
+function dropPastTimes(date, times){
+  if(date !== todayStr()) return times;
+  var now = nowTimeStr();
+  return times.filter(function(t){ return t.start > now; });
+}
+
 async function loadState(){
   var res = await Promise.all([
     sb.from('trainers').select('*'),
@@ -1645,9 +1674,9 @@ function renderMySlotsSection(container){
 /* 18.08.26 after real usage showed one-slot-at-a-time was tedious for a normal work block. It */
 /* auto-splits the range into consecutive fixed-length slots rather than one manual entry each. */
 function openSlotForm(){
-  var today = new Date().toISOString().slice(0,10);
+  var today = todayStr();
   var body =
-    '<div class="form-row"><label>תאריך</label><input type="date" id="f_slot_date" value="'+today+'"></div>'+
+    '<div class="form-row"><label>תאריך</label><input type="date" id="f_slot_date" value="'+today+'" min="'+today+'"></div>'+
     '<div class="form-grid">'+
       '<div class="form-row"><label>משעה</label><input type="time" id="f_slot_from" value="09:00"></div>'+
       '<div class="form-row"><label>עד שעה</label><input type="time" id="f_slot_to" value="17:00"></div>'+
@@ -1657,23 +1686,35 @@ function openSlotForm(){
   openModal('הוספת משבצות זמן', body, foot);
   $('#btnCancel').addEventListener('click', closeModal);
   function updatePreview(){
-    var from = $('#f_slot_from').value, to = $('#f_slot_to').value;
+    var date = $('#f_slot_date').value, from = $('#f_slot_from').value, to = $('#f_slot_to').value;
     var el = $('#f_slot_preview');
-    if(!from || !to){ el.textContent = ''; return; }
+    if(!date || !from || !to){ el.textContent = ''; return; }
+    if(date < todayStr()){ el.textContent = 'לא ניתן לפתוח משבצות בתאריך שעבר.'; return; }
     if(to <= from){ el.textContent = 'שעת הסיום חייבת להיות אחרי שעת ההתחלה.'; return; }
-    var times = generateSlotTimes(from, to, SLOT_LENGTH_MIN);
-    el.textContent = times.length
-      ? 'ייווצרו '+times.length+' משבצות (כל אחת '+SLOT_LENGTH_MIN+' דק׳): '+times.map(function(t){ return t.start; }).join(', ')
-      : 'הטווח קצר מדי ליצירת ולו משבצת אחת ('+SLOT_LENGTH_MIN+' דק׳).';
+    var all = generateSlotTimes(from, to, SLOT_LENGTH_MIN);
+    var times = dropPastTimes(date, all);
+    if(!times.length){
+      el.textContent = all.length
+        ? 'כל השעות בטווח כבר עברו היום — בחרו שעה מאוחרת יותר או תאריך אחר.'
+        : 'הטווח קצר מדי ליצירת ולו משבצת אחת ('+SLOT_LENGTH_MIN+' דק׳).';
+      return;
+    }
+    var skipped = all.length - times.length;
+    el.textContent = 'ייווצרו '+times.length+' משבצות (כל אחת '+SLOT_LENGTH_MIN+' דק׳): '+times.map(function(t){ return t.start; }).join(', ')+
+      (skipped ? ' · '+skipped+' שעות שכבר עברו היום לא ייווצרו.' : '');
   }
+  $('#f_slot_date').addEventListener('input', updatePreview);
   $('#f_slot_from').addEventListener('input', updatePreview);
   $('#f_slot_to').addEventListener('input', updatePreview);
   updatePreview();
   onClickBusy($('#btnSave'), async function(){
     var date = $('#f_slot_date').value, from = $('#f_slot_from').value, to = $('#f_slot_to').value;
     if(!date || !from || !to){ alert('יש למלא תאריך, שעת התחלה ושעת סיום'); return; }
-    var times = generateSlotTimes(from, to, SLOT_LENGTH_MIN);
-    if(!times.length){ alert('הטווח קצר מדי ליצירת משבצת אחת לפחות ('+SLOT_LENGTH_MIN+' דק׳).'); return; }
+    if(date < todayStr()){ alert('לא ניתן לפתוח משבצות בתאריך שעבר.'); return; }
+    var all = generateSlotTimes(from, to, SLOT_LENGTH_MIN);
+    if(!all.length){ alert('הטווח קצר מדי ליצירת משבצת אחת לפחות ('+SLOT_LENGTH_MIN+' דק׳).'); return; }
+    var times = dropPastTimes(date, all);
+    if(!times.length){ alert('כל השעות בטווח כבר עברו היום — בחרו שעה מאוחרת יותר או תאריך אחר.'); return; }
     var rows = times.map(function(t){
       return { trainer_id: currentUser.trainerId, date: date, start_time: t.start, end_time: t.end, status: 'open' };
     });
@@ -1685,9 +1726,12 @@ function openSlotForm(){
     created.forEach(function(row){ state.slots.push(slotFromRow(row)); });
     closeModal();
     renderSchedule();
-    var skipped = rows.length - created.length;
-    if(skipped > 0){
-      alert('נוצרו '+created.length+' משבצות חדשות. '+skipped+' משבצות בטווח כבר היו קיימות ודולגו.');
+    var duplicates = rows.length - created.length;
+    var pastSkipped = all.length - times.length;
+    if(duplicates > 0 || pastSkipped > 0){
+      alert('נוצרו '+created.length+' משבצות חדשות.'+
+        (duplicates > 0 ? ' '+duplicates+' משבצות בטווח כבר היו קיימות ודולגו.' : '')+
+        (pastSkipped > 0 ? ' '+pastSkipped+' משבצות בשעות שכבר עברו היום לא נוצרו.' : ''));
     }
   });
 }
@@ -1767,7 +1811,8 @@ function renderScheduleClient(main){
 function renderOpenSlotsForTrainer(){
   var container = $('#openSlotsForTrainer');
   if(!state.scheduleTrainerId){ container.innerHTML=''; return; }
-  var openSlots = sortSlots(state.slots.filter(function(s){ return s.trainerId===state.scheduleTrainerId && s.status==='open'; }));
+  /* past open slots are filtered out here as well as by RLS — a client only ever sees slots still ahead. */
+  var openSlots = sortSlots(state.slots.filter(function(s){ return s.trainerId===state.scheduleTrainerId && s.status==='open' && !isPastSlot(s); }));
   if(!openSlots.length){ container.innerHTML = '<p class="client-sub" style="margin-top:10px;">אין משבצות פנויות למאמן/ת זו כרגע.</p>'; return; }
   container.innerHTML = '<div style="margin-top:10px;">'+openSlots.map(function(s){
     return slotCardHtml(fmtDate(s.date)+' · '+s.startTime+'–'+s.endTime, '', '<button class="btn btn-accent btn-sm" data-book="'+s.id+'">קביעת תור</button>');

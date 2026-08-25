@@ -182,6 +182,14 @@ language sql stable security definer as $$
   select exists (select 1 from clients where auth_user_id = auth.uid());
 $$;
 
+-- "is this slot still ahead of us?" — used by the training_slots policies below to keep
+-- past slots out of both slot creation and the client's booking view (added 25.08.26).
+-- Jerusalem wall-clock, not UTC: the club and every user are in Israel.
+create or replace function slot_is_future(d date, t time) returns boolean
+language sql stable as $$
+  select (d + t) > (now() at time zone 'Asia/Jerusalem');
+$$;
+
 -- trainers: owner manages all rows; a trainer can see (not edit) their own row; a client
 -- can see trainer names too — needed so the client's "book a session" screen can list
 -- trainers to pick from (trainer full_name isn't sensitive, this is a small private club).
@@ -244,17 +252,26 @@ create policy training_plan_exercises_modify on training_plan_exercises for all
 -- open slots for ANY trainer (to browse and pick one) plus their own booked
 -- slots, but not other clients' bookings. Creating/editing a slot stays scoped
 -- to the owning trainer (or owner) — see the insert/update policies below.
+-- Past slots (added 25.08.26): a client is only offered open slots that are still ahead;
+-- the owner/trainers keep seeing past slots as history, and a client keeps seeing their
+-- own past bookings. Enforced in RLS rather than a CHECK constraint so that old rows stay
+-- readable and updatable — see supabase/migrations/2026-08-25_slots_no_past.sql.
 create policy training_slots_select on training_slots for select
   using (
     is_owner()
     or is_any_trainer()
-    or (status = 'open' and is_any_client())
+    or (status = 'open' and is_any_client() and slot_is_future(date, start_time))
     or client_id = current_client_id()
   );
 
--- only the owning trainer (or owner) can create a slot for that trainer.
+-- only the owning trainer (or owner) can create a slot for that trainer, and only for a
+-- date/time that hasn't passed yet (25.08.26) — the app blocks it in the form too
+-- (deploy/index.html: todayStr/dropPastTimes), this is the server-side half.
 create policy training_slots_insert on training_slots for insert
-  with check (is_owner() or trainer_id = current_trainer_id());
+  with check (
+    (is_owner() or trainer_id = current_trainer_id())
+    and slot_is_future(date, start_time)
+  );
 
 -- two permissive UPDATE policies, combined with OR by Postgres:
 --  (a) the owning trainer/owner editing their own slot (e.g. future edit support).
@@ -267,8 +284,11 @@ create policy training_slots_insert on training_slots for insert
 create policy training_slots_update_owner on training_slots for update
   using (is_owner() or trainer_id = current_trainer_id())
   with check (is_owner() or trainer_id = current_trainer_id());
+-- the slot_is_future() guard is repeated here on purpose: UPDATE is evaluated
+-- independently of the SELECT policy, so without it a client holding a slot id from an
+-- earlier page load could still book a slot whose time has already passed.
 create policy training_slots_update_book on training_slots for update
-  using (status = 'open' and is_any_client())
+  using (status = 'open' and is_any_client() and slot_is_future(date, start_time))
   with check (status = 'booked' and client_id = current_client_id());
 
 -- no delete policy: cancelling/removing a slot is backlog (see table comment above),

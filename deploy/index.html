@@ -953,6 +953,15 @@ function fmtDateShort(d){
 // MediaRecorder's actual output container varies by browser (Chrome/Android: webm, Safari: often
 // mp4/m4a) — derive a matching file extension from the recorded blob's real mime type instead of
 // hardcoding one, so the filename we send always matches the bytes.
+/* Rest is stored as free text, and the paper cards it came from wrote it as 60" — a mark that
+   reads as inches, or as a Hebrew gershayim, before it reads as seconds. A plain number is
+   spelled out as seconds instead; anything else the trainer typed ("1:30", "עד שהדופק יורד")
+   is left exactly as written. (26.08.26) */
+function restDisplay(v){
+  if(v===undefined || v===null || String(v).trim()==='') return '—';
+  var t = String(v).trim().replace(/["״'׳]+$/,'').trim();
+  return /^\d+(\.\d+)?$/.test(t) ? t+' שנ׳' : String(v);
+}
 function extFromMimeType(mime){
   if(!mime) return 'webm';
   if(mime.indexOf('webm')>-1) return 'webm';
@@ -1409,7 +1418,7 @@ function renderPlanPanel(panel, client){
             '<span class="exview-stat"><span class="exview-stat-label">סטים</span><span class="exview-stat-value">'+ex.sets+'</span></span>'+
             '<span class="exview-stat"><span class="exview-stat-label">חזרות</span><span class="exview-stat-value">'+ex.reps+'</span></span>'+
             '<span class="exview-stat"><span class="exview-stat-label">משקל</span><span class="exview-stat-value">'+ex.weight+'</span></span>'+
-            '<span class="exview-stat"><span class="exview-stat-label">מנוחה</span><span class="exview-stat-value">'+ex.rest+'</span></span>'+
+            '<span class="exview-stat"><span class="exview-stat-label">מנוחה</span><span class="exview-stat-value">'+restDisplay(ex.rest)+'</span></span>'+
           '</div>'+
           (ex.notes ? '<div class="exview-note"><span class="exview-note-label">הערות:</span>'+ex.notes+'</div>' : '')+
         '</div>';
@@ -1760,7 +1769,7 @@ function openPlanForm(client, plan){
         '<div><span class="ex-field-label">סטים</span><input data-f="sets" value="'+ex.sets+'"></div>'+
         '<div><span class="ex-field-label">חזרות</span><input data-f="reps" value="'+ex.reps+'"></div>'+
         '<div><span class="ex-field-label">משקל</span><input data-f="weight" value="'+ex.weight+'"></div>'+
-        '<div><span class="ex-field-label">מנוחה</span><input data-f="rest" value="'+ex.rest+'"></div>'+
+        '<div><span class="ex-field-label">מנוחה (שנ׳)</span><input data-f="rest" inputmode="numeric" value="'+ex.rest+'"></div>'+
       '</div>'+
       '<div><span class="ex-field-label">הערות</span><input data-f="notes" value="'+(ex.notes||'')+'"></div>'+
     '</div>';

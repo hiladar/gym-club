@@ -504,6 +504,8 @@
       justify-content:flex-end; border-bottom:none; padding-top:8px;
     }
     table.data.card-rows td.actions::before{ content:none; }
+    /* a cell with nothing in it prints its label and a dash and says less than blank space would */
+    table.data.card-rows td.cell-empty{ display:none; }
     table.data.card-rows td.wrap-value{ flex-direction:column; align-items:flex-start; gap:3px; }
     table.data.card-rows td.wrap-value::before{ text-align:start; }
   }
@@ -1344,7 +1346,9 @@ function renderMeasurementsPanel(panel, client){
       '<td data-label="מסת שריר">'+fmt(m.muscle)+'</td><td data-label="מסת שומן">'+fmt(m.fatMass)+'</td>'+
       '<td data-label="מותניים">'+fmt(m.waist)+'</td><td data-label="חזה">'+fmt(m.chest)+'</td>'+
       '<td data-label="זרוע">'+fmt(m.arm)+'</td><td data-label="ירך">'+fmt(m.thigh)+'</td>'+
-      '<td class="wrap-value" data-label="הערות">'+(m.notes||'—')+'</td>'+
+      /* an empty note is nothing to report: on a phone, where every cell prints its own label,
+         "הערות —" was a line of pure noise under each measurement card. (26.08.26) */
+      '<td class="wrap-value'+(m.notes ? '' : ' cell-empty')+'" data-label="הערות">'+(m.notes||'—')+'</td>'+
       rowActionsHtml('data-edit', 'data-del', m.id);
     rows.appendChild(tr);
   });

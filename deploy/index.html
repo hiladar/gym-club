@@ -308,6 +308,18 @@
     background:var(--bg-surface); border:1px solid var(--card-border); border-radius:14px;
     box-shadow:var(--shadow-card); padding:18px 20px;
   }
+  .card + .card{ margin-top:16px; }
+  /* a card is one titled thing: a strip that names it, a hairline, then the body. Ported from
+     the worklog app — with the borders gone from the cards themselves, the strip is what tells
+     you where one card's content stops and the next one's starts. Cards that carry no title
+     (empty states, a lone picker) keep the plain padded box. */
+  .card:has(> .card-h){ padding:0; overflow:hidden; }
+  .card-h{
+    display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap;
+    padding:9px 20px; min-height:44px; border-bottom:1px solid var(--border);
+    font-size:12.5px; font-weight:700; color:var(--text-secondary);
+  }
+  .card-b{ padding:16px 20px 18px; }
   .grid-2{ display:grid; grid-template-columns:1fr; gap:14px 28px; }
   @media (min-width:760px){ .grid-2{ grid-template-columns:1fr 1fr; } }
   /* Hebrew has no capitals — uppercase was a no-op here and the tracking only loosened the word */
@@ -481,8 +493,6 @@
      version of each. Nothing lives here only: every section is a summary of a tab that still
      holds it all. Client role only; a trainer keeps landing on סקירה, the screen they work from. */
   .home-block + .home-block{ margin-top:14px; }
-  .home-head{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px; }
-  .home-head .section-title{ margin:0; }
   /* a link, not a button: these lead to a tab of the same card, and four accent buttons down
      one screen would each look like the action of the page */
   .home-link{
@@ -665,8 +675,7 @@
     background:var(--info-bg); border:1px solid var(--info-line); color:var(--info-ink);
     padding:10px 14px; border-radius:11px; margin-bottom:16px; font-size:13px;
   }
-  .plan-meta{ display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; flex-wrap:wrap; gap:10px; }
-  .plan-meta h3{ font-size:16px; }
+  .plan-when{ font-size:13px; color:var(--text-secondary); margin-bottom:12px; }
   select.select{
     padding:7px 10px; border-radius:8px; border:1px solid var(--border-strong);
     background:var(--bg-surface); color:var(--text-primary); font-family:inherit; font-size:13px;
@@ -1522,13 +1531,15 @@ function homeUpcomingHtml(client){
       }).join('')+'</div>'
     : '<div class="home-empty">אין לך אימונים קבועים כרגע.</div>';
   return '<div class="card home-block">'+
-    '<div class="home-head"><div class="section-title">האימונים הקרובים</div>'+
+    '<div class="card-h">האימונים הקרובים'+
       (upcoming.length > shown.length
         ? '<button class="home-link" data-goschedule="1">כל האימונים ('+upcoming.length+') ‹</button>'
         : '')+
     '</div>'+
-    body+
-    '<button class="btn btn-accent home-cta" data-goschedule="1">קביעת אימון נוסף</button>'+
+    '<div class="card-b">'+
+      body+
+      '<button class="btn btn-accent home-cta" data-goschedule="1">קביעת אימון נוסף</button>'+
+    '</div>'+
   '</div>';
 }
 
@@ -1542,10 +1553,12 @@ function homeLastNoteHtml(client){
   })[0];
   if(!last || last.date < addDaysToDate(todayStr(), -HOME_NOTE_MAX_AGE_DAYS)) return '';
   return '<div class="card home-block">'+
-    '<div class="home-head"><div class="section-title">מהאימון האחרון</div>'+
+    '<div class="card-h">מהאימון האחרון'+
       '<button class="home-link" data-gotab="plan">כל ההערות ‹</button></div>'+
-    '<div class="home-note-when">'+fmtDate(last.date)+(last.time ? ' · '+last.time : '')+'</div>'+
-    '<div class="home-note-text">'+last.note+'</div>'+
+    '<div class="card-b">'+
+      '<div class="home-note-when">'+fmtDate(last.date)+(last.time ? ' · '+last.time : '')+'</div>'+
+      '<div class="home-note-text">'+last.note+'</div>'+
+    '</div>'+
   '</div>';
 }
 
@@ -1573,28 +1586,30 @@ function homeMetricsHtml(client){
     '</div>';
   }).join('');
   return '<div class="card home-block">'+
-    '<div class="home-head"><div class="section-title">המדדים האחרונים</div>'+
+    '<div class="card-h">המדדים האחרונים'+
       /* nothing to send them to before the first measurement is taken */
       (client.measurements.length ? '<button class="home-link" data-gotab="measurements">כל המדדים ‹</button>' : '')+
     '</div>'+
+    '<div class="card-b">'+
     (client.measurements.length
       ? '<div class="home-metrics">'+tiles+'</div>'+
         /* a grey arrow beside a number that clearly moved looks like a bug until you know
            what grey means here, and the client never sees the trainer-facing explanation */
         (anyGrey ? '<div class="home-foot">חץ אפור: השינוי קטן מכדי להיחשב שינוי אמיתי.</div>' : '')
       : '<div class="home-empty">עדיין לא נרשמו לך מדידות.</div>')+
+    '</div>'+
   '</div>';
 }
 
 function homePlanHtml(client){
   var sorted = client.plans.slice().sort(function(a,b){ return a.effectiveDate<b.effectiveDate?1:-1; });
   var current = sorted[0];
-  var head = '<div class="home-head"><div class="section-title">תוכנית האימונים</div>'+
+  var head = '<div class="card-h">תוכנית האימונים'+
     /* only worth offering once there IS an older version to look at */
     (sorted.length > 1 ? '<button class="home-link" data-gotab="plan">תוכניות קודמות ('+(sorted.length-1)+') ‹</button>' : '')+
   '</div>';
   if(!current){
-    return '<div class="card home-block">'+head+'<div class="home-empty">עדיין לא נבנתה לך תוכנית אימון.</div></div>';
+    return '<div class="card home-block">'+head+'<div class="card-b"><div class="home-empty">עדיין לא נבנתה לך תוכנית אימון.</div></div></div>';
   }
   function filled(v){ return String(v===undefined||v===null?'':v).trim() !== ''; }
   /* the same words the תוכנית אימון tab labels its columns with, on one line: "סטים 4" survives
@@ -1612,10 +1627,12 @@ function homePlanHtml(client){
      the link down to the full plan is offered only when there is actually one of them to go and read */
   var hasMore = current.exercises.some(function(ex){ return filled(ex.rest) || filled(ex.notes); });
   return '<div class="card home-block">'+head+
-    '<div class="home-plan-when">בתוקף מ־'+fmtDate(current.effectiveDate)+
-      (current.coachNotes ? ' · '+current.coachNotes : '')+'</div>'+
-    (rows || '<div class="home-empty">אין תרגילים בתוכנית הנוכחית.</div>')+
-    (hasMore ? '<button class="home-link" data-gotab="plan" style="margin-top:8px;">לתוכנית המלאה ‹</button>' : '')+
+    '<div class="card-b">'+
+      '<div class="home-plan-when">בתוקף מ־'+fmtDate(current.effectiveDate)+
+        (current.coachNotes ? ' · '+current.coachNotes : '')+'</div>'+
+      (rows || '<div class="home-empty">אין תרגילים בתוכנית הנוכחית.</div>')+
+      (hasMore ? '<button class="home-link" data-gotab="plan" style="margin-top:8px;">לתוכנית המלאה ‹</button>' : '')+
+    '</div>'+
   '</div>';
 }
 
@@ -1646,25 +1663,24 @@ function renderOverviewPanel(panel, client){
     return '<div><div class="field-label">'+label+'</div><div class="field-value'+(muted?' muted':'')+'">'+(value||'—')+'</div></div>';
   }
 
+  /* four groups in one slab read as one undifferentiated wall of fields; a card per group
+     gives each one a strip you can find with your eye while scrolling a phone. */
+  function group(title, fields){
+    return '<div class="card"><div class="card-h">'+title+'</div>'+
+      '<div class="card-b"><div class="grid-2">'+fields+'</div></div></div>';
+  }
   panel.innerHTML =
-    '<div class="card">'+
-      '<div class="section-title">פרטי קשר</div>'+
-      '<div class="grid-2">'+
-        field('טלפון', client.phone)+field('מייל', client.email)+
-        field('תאריך לידה', fmtDate(client.dob))+field('מין', client.gender)+
-        field('גובה', client.height ? client.height+' ס"מ' : null, !client.height)+
-        field('BMI (מחושב)', bmiValue(client) ? fmt(bmiValue(client)) : null, !bmiValue(client))+
-      '</div>'+
-      '<div class="section-title">אימון</div>'+
-      '<div class="grid-2">'+field('מטרת אימון', client.goal)+'</div>'+
-      '<div class="section-title">בריאות</div>'+
-      '<div class="grid-2">'+
-        field('מצב רפואי', client.medical)+field('תרופות קבועות', client.meds)+
-        field('פציעות ומגבלות', client.injuries)+field('אישור רופא', client.doctorApproval || 'לא הוזן', !client.doctorApproval)+
-      '</div>'+
-      '<div class="section-title">איש קשר לחירום</div>'+
-      '<div class="grid-2">'+field('שם', client.emergencyName)+field('טלפון', client.emergencyPhone)+'</div>'+
-    '</div>';
+    group('פרטי קשר',
+      field('טלפון', client.phone)+field('מייל', client.email)+
+      field('תאריך לידה', fmtDate(client.dob))+field('מין', client.gender)+
+      field('גובה', client.height ? client.height+' ס"מ' : null, !client.height)+
+      field('BMI (מחושב)', bmiValue(client) ? fmt(bmiValue(client)) : null, !bmiValue(client)))+
+    group('אימון', field('מטרת אימון', client.goal))+
+    group('בריאות',
+      field('מצב רפואי', client.medical)+field('תרופות קבועות', client.meds)+
+      field('פציעות ומגבלות', client.injuries)+field('אישור רופא', client.doctorApproval || 'לא הוזן', !client.doctorApproval))+
+    group('איש קשר לחירום',
+      field('שם', client.emergencyName)+field('טלפון', client.emergencyPhone));
 }
 
 function renderMeasurementsPanel(panel, client){
@@ -1673,14 +1689,13 @@ function renderMeasurementsPanel(panel, client){
     '<div class="metric-chips" id="metricChips"></div>'+
     '<div class="featured-card" id="featuredCard"></div>'+
     '<div class="card">'+
-      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px;">'+
-        '<div class="section-title" style="margin:0;">כל המדידות</div>'+
+      '<div class="card-h">כל המדידות'+
         '<button class="btn btn-accent btn-sm edit-only" id="btnNewMeasurement">+ מדידה חדשה</button>'+
       '</div>'+
-      '<div class="table-scroll"><table class="data card-rows"><thead><tr>'+
+      '<div class="card-b"><div class="table-scroll"><table class="data card-rows"><thead><tr>'+
         '<th>תאריך</th><th>משקל</th><th>BMI</th><th>% שומן</th><th>% נוזלים</th><th>מסת שריר</th><th>מסת שומן</th>'+
         '<th>מותניים</th><th>חזה</th><th>זרוע</th><th>ירך</th><th>הערות</th><th></th>'+
-      '</tr></thead><tbody id="measureRows"></tbody></table></div>'+
+      '</tr></thead><tbody id="measureRows"></tbody></table></div></div>'+
     '</div>';
 
   renderMetricSwitcher(panel, client);
@@ -1750,21 +1765,25 @@ function renderPlanPanel(panel, client){
   panel.innerHTML =
     (isHistory ? '<div class="plan-banner">צופה בגרסה היסטורית מתאריך '+fmtDate(viewing.effectiveDate)+' (לקריאה בלבד)<button class="btn btn-sm" id="btnBackCurrent">חזרה לתוכנית הנוכחית</button></div>' : '')+
     '<div class="card">'+
-      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px;">'+
-        '<div class="section-title" style="margin:0;">הערות אימון</div>'+
+      '<div class="card-h">הערות אימון'+
         '<button class="btn btn-accent btn-sm edit-only" id="btnNewTrainingNote">+ הערה חדשה</button>'+
       '</div>'+
-      '<div class="note-list" id="trainingNoteRows"></div>'+
-      '<div id="trainingNotesToggle" style="margin-top:10px;text-align:center;"></div>'+
+      '<div class="card-b">'+
+        '<div class="note-list" id="trainingNoteRows"></div>'+
+        '<div id="trainingNotesToggle" style="margin-top:10px;text-align:center;"></div>'+
+      '</div>'+
     '</div>'+
-    '<div class="card" style="margin-top:16px;">'+
-      '<div class="plan-meta">'+
-        '<div><h3>תוכנית בתוקף מ־'+fmtDate(viewing.effectiveDate)+'</h3><div class="profile-goal">'+(viewing.coachNotes||'')+'</div></div>'+
+    '<div class="card">'+
+      '<div class="card-h">תוכנית האימון'+
         '<div style="display:flex;gap:8px;align-items:center;">'+
           '<select class="select" id="versionSelect">'+optionsHtml+'</select>'+
           (isHistory ? '' : '<button class="btn btn-sm edit-only" id="btnEditPlan" style="white-space:nowrap;">עריכה</button><button class="btn btn-accent btn-sm edit-only" id="btnNewPlan" style="white-space:nowrap;">+ גרסה</button>')+
         '</div>'+
       '</div>'+
+      '<div class="card-b">'+
+      /* which version is on screen, in the same words the home tab uses for it */
+      '<div class="plan-when">בתוקף מ־'+fmtDate(viewing.effectiveDate)+
+        (viewing.coachNotes ? ' · '+viewing.coachNotes : '')+'</div>'+
       '<div class="exview-list">'+
       viewing.exercises.map(function(ex){
         return '<div class="exview-row">'+
@@ -1778,6 +1797,7 @@ function renderPlanPanel(panel, client){
           (ex.notes ? '<div class="exview-note"><span class="exview-note-label">הערות:</span>'+ex.notes+'</div>' : '')+
         '</div>';
       }).join('')+
+      '</div>'+
       '</div>'+
     '</div>';
 
@@ -2633,16 +2653,18 @@ function renderMyAppointmentsSection(container){
   var past = groupSlotsByDate(mine.filter(isPastSlot)).reverse()
     .reduce(function(acc, g){ return acc.concat(g.slots); }, []);
   var expanded = !!state.myAppointmentsExpanded;
-  var html = '<div class="card">';
+  var html = '<div class="card">'+
+    '<div class="card-h">אימונים קרובים'+(upcoming.length ? ' ('+upcoming.length+')' : '')+'</div>'+
+    '<div class="card-b">';
   html += upcoming.length
-    ? '<div class="section-title">אימונים קרובים ('+upcoming.length+')</div>'+apptDaysHtml(upcoming, false)
-    : '<div class="section-title">אימונים קרובים</div><p class="client-sub">אין אימונים שנקבעו לך קדימה.</p>';
+    ? apptDaysHtml(upcoming, false)
+    : '<p class="client-sub">אין אימונים שנקבעו לך קדימה.</p>';
   if(past.length){
     html += '<div style="margin-top:16px;"><button class="btn btn-sm btn-ghost" id="btnToggleMyAppointments">'+
       (expanded ? 'הצג פחות ▴' : 'אימונים שהיו ('+past.length+') ▾')+'</button></div>'+
       (expanded ? apptDaysHtml(past, true) : '');
   }
-  container.innerHTML = html + '</div>';
+  container.innerHTML = html + '</div></div>';
   var toggle = $('#btnToggleMyAppointments', container);
   if(toggle) toggle.addEventListener('click', function(){
     state.myAppointmentsExpanded = !expanded;
@@ -2760,12 +2782,16 @@ function renderScheduleClient(main){
   main.innerHTML =
     '<div class="profile-head"><div><h2>תיאום אימונים</h2><div class="profile-goal">קביעת אימון עם מאמן/ת</div></div></div>'+
     '<div class="card">'+
-      '<div class="form-row"><label>בחרו מאמן/ת</label>'+
-        '<select class="select" id="scheduleTrainerSelect"><option value="">— בחרו —</option>'+trainerOptions+'</select>'+
+      '<div class="card-h">קביעת אימון</div>'+
+      '<div class="card-b">'+
+        '<div class="form-row"><label>בחרו מאמן/ת</label>'+
+          '<select class="select" id="scheduleTrainerSelect"><option value="">— בחרו —</option>'+trainerOptions+'</select>'+
+        '</div>'+
+        '<div id="openSlotsForTrainer"></div>'+
       '</div>'+
-      '<div id="openSlotsForTrainer"></div>'+
     '</div>'+
-    '<div class="card" style="margin-top:16px;"><div class="section-title">האימונים שלי</div><div id="myBookingsList"></div></div>';
+    '<div class="card"><div class="card-h">האימונים שלי</div>'+
+      '<div class="card-b"><div id="myBookingsList"></div></div></div>';
   $('#scheduleTrainerSelect').addEventListener('change', function(e){
     state.scheduleTrainerId = e.target.value || null;
     state.pendingSlotId = null;

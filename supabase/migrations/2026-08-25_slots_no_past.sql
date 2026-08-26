@@ -1,7 +1,8 @@
 -- Migration: no time slots in the past, 2026-08-25 (revised 2026-08-26 — see "revision" below).
 -- Paste this into the Supabase SQL editor (Project → SQL Editor → New query) and run it.
 -- Safe to re-run — uses CREATE OR REPLACE / DROP POLICY IF EXISTS.
--- STATUS: written locally, NOT yet run against the real project.
+-- STATUS: RUN SUCCESSFULLY against the real project on 2026-08-26 (owner ran it in the
+-- Supabase SQL editor, reported "Success"). Safe to re-run if ever needed.
 --
 -- Product rule (see PROJECT.md, "מודול תיאום אימונים" → "משבצות בעבר"):
 --   1. a trainer cannot open a slot whose date/time has already passed;

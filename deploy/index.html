@@ -569,9 +569,12 @@
   .ex-card{ border:1px solid var(--border); border-radius:10px; padding:12px; margin-bottom:10px; background:var(--bg-sunken); }
   .ex-card-top{ display:flex; align-items:center; gap:8px; margin-bottom:8px; }
   .ex-card-top input{ flex:1; font-weight:600; }
-  /* the four short values (sets/reps/weight/rest) hold 1-4 characters, so they share one compact row */
-  .ex-card-nums{ display:grid; grid-template-columns:repeat(4,1fr); gap:6px; margin-bottom:8px; }
-  @media (max-width:339px){ .ex-card-nums{ grid-template-columns:1fr 1fr; } }
+  /* Sets/reps/weight/rest are one kind of thing and should look like it: a 2x2 grid of equal
+     boxes on a phone, one row of four on a wide screen. They used to break into a ragged
+     2 + 1 + 1 because an <input>'s intrinsic width is wider than the column it was given, and
+     plain `1fr` refuses to shrink a column below its content — minmax(0,1fr) does. (26.08.26) */
+  .ex-card-nums{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; margin-bottom:8px; }
+  @media (min-width:560px){ .ex-card-nums{ grid-template-columns:repeat(4,minmax(0,1fr)); } }
   .ex-field-label{ display:block; font-size:10.5px; color:var(--text-muted); margin-bottom:3px; }
   .ex-card input{
     width:100%; padding:12px 12px; border-radius:8px; border:1px solid var(--border-strong);

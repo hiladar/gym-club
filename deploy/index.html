@@ -356,20 +356,11 @@
   .confirm-when{ font-size:15px; font-weight:600; font-variant-numeric:tabular-nums; }
   .confirm-who{ font-size:12.5px; color:var(--text-muted); margin-top:2px; margin-bottom:10px; }
 
-  /* "התורים שלי" — flat rows, not cards inside a card. The next appointment is pulled out on
-     top; everything already behind us collapses so history stops sitting above what's next. */
-  .booking-next{
-    display:flex; align-items:center; justify-content:space-between; gap:10px;
-    background:var(--accent-wash); border:1px solid var(--accent); border-radius:11px;
-    padding:12px 14px; margin-bottom:6px;
-  }
-  .booking-next .booking-when{ color:var(--accent); font-size:15.5px; }
-  .booking-next .booking-who{ color:var(--accent); opacity:.85; }
-  .booking-tag{
-    font-size:11px; font-weight:700; color:var(--accent); background:var(--bg-surface);
-    border-radius:100px; padding:3px 9px; white-space:nowrap; flex:none;
-  }
+  /* "התורים שלי" — flat rows, not cards inside a card. Upcoming appointments read as one
+     plain list — the nearest one is simply first, with no highlight of its own — and everything
+     already behind us collapses so history stops sitting above what's next. */
   .booking-row{ padding:11px 2px; border-top:1px solid var(--border); }
+  #myBookingsList .booking-row:first-child{ border-top:none; padding-top:2px; }
   .booking-row.is-past{ opacity:.62; }
   .booking-when{ font-weight:600; font-size:14.5px; font-variant-numeric:tabular-nums; }
   .booking-who{ font-size:12px; color:var(--text-muted); margin-top:2px; }
@@ -2259,12 +2250,7 @@ function renderMyBookings(list){
   }
   var html = '';
   if(upcoming.length){
-    html += '<div class="booking-next">'+
-        '<div><div class="booking-when">'+when(upcoming[0])+'</div>'+
-        '<div class="booking-who">'+whoWith(upcoming[0])+'</div></div>'+
-        '<span class="booking-tag">התור הבא</span>'+
-      '</div>'+
-      upcoming.slice(1).map(function(s){ return rowHtml(s, false); }).join('');
+    html += upcoming.map(function(s){ return rowHtml(s, false); }).join('');
   } else {
     html += '<p class="client-sub">אין לך תורים עתידיים.</p>';
   }

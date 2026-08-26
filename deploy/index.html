@@ -18,14 +18,14 @@
   }
   html, body{ margin:0; padding:0; }
   :root{
-    --bg-page:#F2EFE7;
+    --bg-page:#F6F3EC;
     --bg-surface:#FFFFFF;
-    --bg-sunken:#EAE6D9;
-    --text-primary:#2A2A26;
-    --text-secondary:#5E5C52;
-    --text-muted:#8B8878;
-    --border:rgba(42,42,38,0.12);
-    --border-strong:rgba(42,42,38,0.18);
+    --bg-sunken:#F1EEE6;
+    --text-primary:#23293A;
+    --text-secondary:#5C584F;
+    --text-muted:#857F73;
+    --border:#E6E2D7;
+    --border-strong:#D9D4C7;
     --accent:#1E3A8A;
     --accent-strong:#152C6B;
     --accent-wash:rgba(30,58,138,0.12);
@@ -35,6 +35,16 @@
     --warn:#a5720a;
     --warn-bg:#fdf1da;
     --shadow:0 8px 24px rgba(42,36,20,0.12), 0 2px 6px rgba(42,36,20,0.08);
+    /* cards sit on the page by elevation, not by a hairline — two very soft layers, so a
+       screen full of cards reads as one surface instead of a grid of boxes. In dark mode a
+       shadow separates nothing, so --card-border puts the hairline back there. */
+    --shadow-card:0 1px 2px rgba(35,41,58,0.05), 0 4px 12px rgba(35,41,58,0.06);
+    --card-border:transparent;
+    /* informational (not warning) notice: cool blue on the warm page */
+    --info-bg:#EEF4FF; --info-line:#C3D6F5; --info-ink:#0F2F66;
+    /* a selected tab is ink, not accent — a filled accent pill and a filled primary button
+       on the same screen compete for the same "this one" signal */
+    --nav-on-bg:#23293A; --nav-on-ink:#FFFFFF;
     color-scheme:light;
   }
   @media (prefers-color-scheme: dark){
@@ -42,7 +52,7 @@
       --bg-page:#141311;
       --bg-surface:#1E1D19;
       --bg-sunken:#211F1A;
-      --text-primary:#EDEAE0;
+      --text-primary:#E7E8EC;
       --text-secondary:#B9B6A9;
       --text-muted:#8C8A7C;
       --border:rgba(237,234,224,0.12);
@@ -56,6 +66,10 @@
       --warn:#e0ad4d;
       --warn-bg:#3a2f14;
       --shadow:0 8px 28px rgba(0,0,0,0.45), 0 2px 8px rgba(0,0,0,0.3);
+      --shadow-card:0 1px 2px rgba(0,0,0,0.35), 0 4px 14px rgba(0,0,0,0.28);
+      --card-border:var(--border);
+      --info-bg:#182338; --info-line:#2E4571; --info-ink:#A6C4F2;
+      --nav-on-bg:#E7E8EC; --nav-on-ink:#1E1D19;
       color-scheme:dark;
     }
   }
@@ -63,7 +77,7 @@
     --bg-page:#141311;
     --bg-surface:#1E1D19;
     --bg-sunken:#211F1A;
-    --text-primary:#EDEAE0;
+    --text-primary:#E7E8EC;
     --text-secondary:#B9B6A9;
     --text-muted:#8C8A7C;
     --border:rgba(237,234,224,0.12);
@@ -77,6 +91,10 @@
     --warn:#e0ad4d;
     --warn-bg:#3a2f14;
     --shadow:0 8px 28px rgba(0,0,0,0.45), 0 2px 8px rgba(0,0,0,0.3);
+    --shadow-card:0 1px 2px rgba(0,0,0,0.35), 0 4px 14px rgba(0,0,0,0.28);
+    --card-border:var(--border);
+    --info-bg:#182338; --info-line:#2E4571; --info-ink:#A6C4F2;
+    --nav-on-bg:#E7E8EC; --nav-on-ink:#1E1D19;
     color-scheme:dark;
   }
 
@@ -117,7 +135,7 @@
   .brand span{ color:var(--text-muted); font-size:11.5px; letter-spacing:.3px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .btn{
     appearance:none; border:1px solid var(--border-strong); background:var(--bg-surface);
-    color:var(--text-primary); padding:9px 16px; border-radius:8px; font-size:14px; min-height:40px;
+    color:var(--text-primary); padding:9px 16px; border-radius:9px; font-size:14px; min-height:40px;
     cursor:pointer; display:inline-flex; align-items:center; gap:6px; font-family:inherit;
     position:relative; -webkit-tap-highlight-color:transparent; touch-action:manipulation;
     transition:transform .06s ease, background-color .12s ease, border-color .12s ease, opacity .12s ease;
@@ -138,12 +156,12 @@
   }
   .btn-accent.is-busy::after{ color:var(--accent-ink-on); }
   @keyframes btn-spin{ to{ transform:rotate(360deg); } }
-  .btn-accent{ background:var(--accent); border-color:var(--accent); color:var(--accent-ink-on); font-weight:600; }
+  .btn-accent{ background:var(--accent); border-color:var(--accent); color:var(--accent-ink-on); font-weight:700; }
   .btn-accent:hover{ background:var(--accent-strong); border-color:var(--accent-strong); }
   .btn-ghost{ border-color:transparent; background:transparent; }
   .btn-ghost:hover{ background:var(--bg-sunken); border-color:var(--border); }
   .btn-danger{ color:#c1362f; }
-  .btn-sm{ padding:7px 12px; font-size:12.5px; border-radius:6px; min-height:34px; }
+  .btn-sm{ padding:7px 12px; font-size:12.5px; border-radius:7px; min-height:34px; }
   .btn-icon{ padding:8px 10px; }
   .btn-icon-only{ width:40px; height:40px; padding:0; justify-content:center; flex:none; }
   .btn-icon-only svg{ width:16px; height:16px; }
@@ -246,8 +264,8 @@
   .client-chevron{ color:var(--text-muted); font-size:15px; flex:none; }
   @media (min-width:760px){ .client-chevron{ display:none; } }
   .chip{
-    display:inline-flex; align-items:center; gap:4px; font-size:11px; font-weight:600;
-    padding:2px 7px; border-radius:100px; white-space:nowrap;
+    display:inline-flex; align-items:center; gap:4px; font-size:11px; font-weight:700;
+    padding:3px 8px; border-radius:7px; white-space:nowrap;
   }
   .chip-warn{ background:var(--warn-bg); color:var(--warn); }
   .warn-icon{
@@ -265,35 +283,38 @@
 
   /* the client role has a fourth tab (ראשי), which on a narrow phone is wider than the
      screen — the strip scrolls sideways rather than squeezing or wrapping the labels */
+  /* pill tabs rather than an underline strip: the strip is always mid-scroll on a phone,
+     and a filled pill survives that where a 2px rule under a half-visible label did not */
   .tabs{
-    display:flex; gap:4px; border-bottom:1px solid var(--border); margin-bottom:20px;
+    display:flex; gap:4px; margin-bottom:20px;
     overflow-x:auto; scrollbar-width:none; -webkit-overflow-scrolling:touch;
   }
   .tabs::-webkit-scrollbar{ display:none; }
   .tab{ flex:none; }
   .tab{
-    padding:11px 12px; margin-inline-end:4px; background:none; border:none; cursor:pointer;
-    font-family:inherit; font-size:14px; color:var(--text-muted); border-bottom:2px solid transparent;
-    position:relative; top:1px; min-height:44px;
+    padding:11px 14px; background:none; border:none; cursor:pointer; border-radius:9px;
+    font-family:inherit; font-size:13.5px; font-weight:600; color:var(--text-muted);
+    position:relative; min-height:44px;
   }
-  .tab.active{ color:var(--text-primary); border-bottom-color:var(--accent); font-weight:600; }
+  .tab.active{ background:var(--nav-on-bg); color:var(--nav-on-ink); font-weight:700; }
   .tab:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
   .tab{ -webkit-tap-highlight-color:transparent; touch-action:manipulation; transition:color .12s ease, background-color .12s ease; }
-  .tab:active{ color:var(--text-primary); background:var(--bg-sunken); }
+  .tab:not(.active):active{ color:var(--text-primary); background:var(--bg-sunken); }
 
   .panel{ display:none; }
   .panel.active{ display:block; }
 
   .card{
-    background:var(--bg-surface); border:1px solid var(--border); border-radius:12px;
-    padding:18px 20px;
+    background:var(--bg-surface); border:1px solid var(--card-border); border-radius:14px;
+    box-shadow:var(--shadow-card); padding:18px 20px;
   }
   .grid-2{ display:grid; grid-template-columns:1fr; gap:14px 28px; }
   @media (min-width:760px){ .grid-2{ grid-template-columns:1fr 1fr; } }
-  .field-label{ font-size:11.5px; color:var(--text-muted); text-transform:uppercase; letter-spacing:.4px; margin-bottom:3px; }
+  /* Hebrew has no capitals — uppercase was a no-op here and the tracking only loosened the word */
+  .field-label{ font-size:11.5px; font-weight:600; color:var(--text-muted); margin-bottom:3px; }
   .field-value{ font-size:14.5px; }
   .field-value.muted{ color:var(--text-muted); font-style:italic; }
-  .section-title{ font-size:13px; color:var(--text-muted); text-transform:uppercase; letter-spacing:.5px; margin:22px 0 10px; }
+  .section-title{ font-size:12.5px; font-weight:700; color:var(--text-secondary); margin:22px 0 10px; }
   .section-title:first-child{ margin-top:0; }
 
   /* ===== scheduling: day strip + time grid (26.08.26) ===== */
@@ -480,7 +501,7 @@
   /* היום/מחר — the two days a client scanning a column of dates is actually looking for */
   .home-badge{
     margin-inline-start:auto; flex:none; font-size:11px; font-weight:700;
-    padding:3px 9px; border-radius:100px; background:var(--accent-wash); color:var(--accent);
+    padding:3px 9px; border-radius:7px; background:var(--accent-wash); color:var(--accent);
   }
   .home-cta{ width:100%; justify-content:center; margin-top:14px; }
   .home-note-when{ font-size:12px; color:var(--text-muted); font-variant-numeric:tabular-nums; margin-bottom:3px; }
@@ -489,7 +510,7 @@
      tapped: the value, how far it moved since the measurement before it, and its date. */
   .home-metrics{ display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }
   @media (max-width:420px){ .home-metrics{ grid-template-columns:repeat(2,1fr); } }
-  .home-metric{ border:1px solid var(--border); border-radius:11px; padding:10px 12px; display:flex; flex-direction:column; gap:2px; }
+  .home-metric{ border:1px solid transparent; background:var(--bg-sunken); border-radius:12px; padding:10px 12px; display:flex; flex-direction:column; gap:2px; }
   .home-metric-label{ font-size:11.5px; color:var(--text-secondary); }
   .home-metric-value{ font-size:17px; font-weight:600; font-variant-numeric:tabular-nums; }
   .home-metric-value span{ font-size:11.5px; color:var(--text-muted); font-weight:400; }
@@ -515,7 +536,7 @@
   .metric-chips{ display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-bottom:14px; }
   @media (max-width:420px){ .metric-chips{ grid-template-columns:repeat(2,1fr); } }
   .metric-chip{
-    text-align:start; border:1px solid var(--border); background:var(--bg-surface); border-radius:11px;
+    text-align:start; border:1px solid transparent; background:var(--bg-sunken); border-radius:12px;
     padding:10px 12px; cursor:pointer; font-family:inherit; display:flex; flex-direction:column; gap:2px;
   }
   .metric-chip{ -webkit-tap-highlight-color:transparent; touch-action:manipulation; transition:transform .06s ease, background-color .12s ease, border-color .12s ease; }
@@ -529,7 +550,7 @@
   .metric-chip-value[dir="ltr"]{ text-align:right; }
   /* a value with no date is a value with no idea how old it is */
   .metric-chip-date{ font-size:10.5px; color:var(--text-muted); font-variant-numeric:tabular-nums; }
-  .featured-card{ background:var(--bg-surface); border:1px solid var(--border); border-radius:12px; padding:16px 18px 10px; margin-bottom:22px; }
+  .featured-card{ background:var(--bg-surface); border:1px solid var(--card-border); border-radius:14px; box-shadow:var(--shadow-card); padding:16px 18px 10px; margin-bottom:22px; }
   .featured-card[hidden]{ display:none; }
   .stat-top{ display:flex; align-items:baseline; justify-content:space-between; margin-bottom:2px; }
   .stat-label{ font-size:12.5px; color:var(--text-secondary); }
@@ -641,8 +662,8 @@
 
   .plan-banner{
     display:flex; align-items:center; justify-content:space-between; gap:10px;
-    background:var(--accent-wash); border:1px solid var(--accent); color:var(--accent-strong);
-    padding:9px 14px; border-radius:9px; margin-bottom:16px; font-size:13px;
+    background:var(--info-bg); border:1px solid var(--info-line); color:var(--info-ink);
+    padding:10px 14px; border-radius:11px; margin-bottom:16px; font-size:13px;
   }
   .plan-meta{ display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; flex-wrap:wrap; gap:10px; }
   .plan-meta h3{ font-size:16px; }

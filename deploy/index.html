@@ -385,6 +385,10 @@
   .confirmbar{ margin-top:14px; padding-top:12px; border-top:1px solid var(--border); }
   .confirm-when{ font-size:15px; font-weight:600; font-variant-numeric:tabular-nums; }
   .confirm-who{ font-size:12.5px; color:var(--text-muted); margin-top:2px; margin-bottom:10px; }
+  /* the same bar after the write went through: a chip changing colour was the only sign a
+     booking had happened, and it is easy to tap confirm and not be sure anything did. */
+  .confirm-done{ font-size:15px; font-weight:600; color:var(--accent); margin-bottom:2px; }
+  .confirmbar.done .confirm-who{ margin-bottom:0; }
 
   /* "התורים שלי" — flat rows, not cards inside a card. Upcoming appointments read as one
      plain list — the nearest one is simply first, with no highlight of its own — and everything
@@ -1007,7 +1011,8 @@ var state = {
   scheduleTrainerId: null, // client role: which trainer's open slots are being browsed; trainer/owner role: filter for "all trainers" tab
   scheduleDate: null, // day currently shown by the day strip (YYYY-MM-DD); shared by every schedule screen
   pendingSlotId: null, // client role: slot tapped in the time grid, awaiting the confirm button
-  myBookingsExpanded: false, // client role: "התורים שלי" — are the already-past appointments shown
+  myBookingsExpanded: false, // client role: "האימונים שלי" — are the already-past appointments shown
+  justBookedSlotId: null, // client role: the session just booked, so the grid can confirm it instead of only recolouring a chip
   myAppointmentsExpanded: false, // trainer/owner role: האימונים שלי — are the sessions that already happened shown
   scheduleTab: null, // trainer/owner role: 'appointments' | 'mine' | 'all' — which scheduling sub-tab is active (every trainer sees every trainer's slots since 19.08.26)
 };
@@ -1404,7 +1409,7 @@ function renderMain(){
   var main = $('#main');
   var client = getClient(state.activeClientId);
   if(!client){
-    main.innerHTML = '<div class="empty-state"><h2>בחר לקוח מהרשימה</h2><p>או צור לקוח חדש כדי להתחיל.</p></div>';
+    main.innerHTML = '<div class="empty-state"><h2>בחרו לקוח מהרשימה</h2><p>או צרו לקוח חדש כדי להתחיל.</p></div>';
     return;
   }
 
@@ -2174,6 +2179,7 @@ function updateNavActive(){
 }
 function showScheduleView(){
   state.view = 'schedule';
+  state.justBookedSlotId = null; /* the "נקבע" bar belongs to the visit it happened in */
   $('#shell').classList.add('hidden');
   $('#scheduleShell').classList.remove('hidden');
   updateNavActive();
@@ -2308,7 +2314,7 @@ function dayStripHtml(dates, selected, slots){
     var cnt = open ? open+' פנוי' : (over ? 'עבר' : (!onDay.length ? '—' : 'מלא'));
     /* dimmed = nothing left to do there; a fully booked working day stays at full strength. */
     var cls = 'day'+(d===selected?' active':'')+(!onDay.length||over?' empty':'')+(open?' has':'');
-    return '<button class="'+cls+'" data-day="'+d+'">'+
+    return '<button class="'+cls+'"'+(d===selected?' aria-current="date"':'')+' data-day="'+d+'">'+
       '<span class="dow">'+dayLetter(d)+'</span>'+
       '<span class="num">'+parseInt(d.split('-')[2],10)+'</span>'+
       '<span class="cnt">'+cnt+'</span>'+
@@ -2426,7 +2432,7 @@ function renderMySlotsSection(container){
       var res = await sb.from('training_slots').delete().eq('id', slot.id).select();
       if(res.error){ alert('שגיאה במחיקת המשבצת: '+res.error.message); return; }
       if(!(res.data && res.data.length)){
-        alert('המשבצת לא נמחקה — ייתכן שנקבע בה תור בינתיים. מרעננים את הרשימה.');
+        alert('המשבצת לא נמחקה — ייתכן שנקבע בה אימון בינתיים. מרעננים את הרשימה.');
         try{ await loadState(); } catch(e){}
         renderSchedule();
         return;
@@ -2720,13 +2726,20 @@ function renderAllSlotListBody(container){
 
 function renderScheduleClient(main){
   var myBookings = sortSlots(state.slots.filter(function(s){ return s.clientId===currentUser.clientId; }));
+  /* Opening on "— בחרו —" made every visit start with a question the client nearly always
+     answers the same way. The trainer behind their latest session is the better first guess;
+     the picker is still there for the times it is wrong. */
+  if(!state.scheduleTrainerId && myBookings.length){
+    var lastTrainerId = myBookings[myBookings.length-1].trainerId;
+    if(state.trainers.some(function(t){ return t.id===lastTrainerId; })) state.scheduleTrainerId = lastTrainerId;
+  }
   var trainerOptions = state.trainers.map(function(t){
     return '<option value="'+t.id+'"'+(state.scheduleTrainerId===t.id?' selected':'')+'>'+t.name+'</option>';
   }).join('');
   main.innerHTML =
-    '<div class="profile-head"><div><h2>תיאום אימונים</h2><div class="profile-goal">קביעת תור עם מאמן/ת</div></div></div>'+
+    '<div class="profile-head"><div><h2>תיאום אימונים</h2><div class="profile-goal">קביעת אימון עם מאמן/ת</div></div></div>'+
     '<div class="card">'+
-      '<div class="form-row"><label>בחר/י מאמן/ת</label>'+
+      '<div class="form-row"><label>בחרו מאמן/ת</label>'+
         '<select class="select" id="scheduleTrainerSelect"><option value="">— בחרו —</option>'+trainerOptions+'</select>'+
       '</div>'+
       '<div id="openSlotsForTrainer"></div>'+
@@ -2735,6 +2748,12 @@ function renderScheduleClient(main){
   $('#scheduleTrainerSelect').addEventListener('change', function(e){
     state.scheduleTrainerId = e.target.value || null;
     state.pendingSlotId = null;
+    state.justBookedSlotId = null;
+    /* The day carried over from the previous trainer, and the strip always spans at least the
+       next two weeks — so switching to a trainer whose first free hour is three weeks out
+       landed on an empty grid that reads as "this trainer has nothing". Clearing it lets
+       ensureScheduleDate land on this trainer's own first day with hours on it. */
+    state.scheduleDate = null;
     renderOpenSlotsForTrainer();
   });
   renderOpenSlotsForTrainer();
@@ -2766,9 +2785,9 @@ function renderOpenSlotsForTrainer(){
     ? '<div class="timegrid">'+onDay.map(function(s){
         /* the client's own booking is theirs, not "taken" — accent, not the warn colour a
            trainer's screen uses for a slot somebody else holds. */
-        if(s.status!=='open') return '<div class="t '+(isPastSlot(s)?'t-past':'t-mine')+'">'+s.startTime+'<small>התור שלך</small></div>';
+        if(s.status!=='open') return '<div class="t '+(isPastSlot(s)?'t-past':'t-mine')+'">'+s.startTime+'<small>האימון שלך</small></div>';
         var sel = s.id===state.pendingSlotId;
-        return '<button class="t '+(sel?'t-sel':'t-open')+'" data-pick="'+s.id+'">'+s.startTime+
+        return '<button class="t '+(sel?'t-sel':'t-open')+'" aria-pressed="'+(sel?'true':'false')+'" data-pick="'+s.id+'">'+s.startTime+
           '<small>'+(sel?'נבחר':'פנוי')+'</small></button>';
       }).join('')+'</div>'
     : '<p class="client-sub" style="margin-top:4px;">אין משבצות פנויות ביום זה.</p>';
@@ -2776,21 +2795,32 @@ function renderOpenSlotsForTrainer(){
   var countLabel = openCount ? openCount+(openCount===1 ? ' שעה פנויה' : ' שעות פנויות') : 'אין שעות פנויות';
   /* the appointment is spelled out above the button, not inside its label: day, date and both
      times crammed into one accent button wrapped to three lines on a phone. */
+  /* and the same bar again once the write went through: until now the only sign a booking
+     had succeeded was the tapped chip turning into "האימון שלך", which is easy to miss on the
+     one screen whose whole point is knowing it worked. Stays until the day, the trainer or
+     the screen changes. */
+  var justBooked = onDay.filter(function(s){ return s.id===state.justBookedSlotId; })[0];
   var confirm = pending
     ? '<div class="confirmbar">'+
         '<div class="confirm-when">'+fmtDate(pending.date)+' · '+pending.startTime+'–'+pending.endTime+'</div>'+
         '<div class="confirm-who">עם '+(trainer ? trainer.name : '—')+'</div>'+
         '<button class="btn btn-accent" style="width:100%;justify-content:center;" data-book="'+pending.id+'">'+
-          'אישור קביעת תור</button>'+
+          'אישור קביעת אימון</button>'+
       '</div>'
-    : '';
+    : (justBooked
+      ? '<div class="confirmbar done">'+
+          '<div class="confirm-done">✓ האימון נקבע</div>'+
+          '<div class="confirm-when">'+fmtDate(justBooked.date)+' · '+justBooked.startTime+'–'+justBooked.endTime+'</div>'+
+          '<div class="confirm-who">עם '+(trainer ? trainer.name : '—')+'</div>'+
+        '</div>'
+      : '');
   container.innerHTML = '<div style="margin-top:14px;">'+
     dayStripHtml(dates, date, visible)+
     '<div class="dayhead"><div class="day-title">'+fmtDate(date)+'</div>'+
       '<div class="day-count">'+countLabel+'</div></div>'+
     grid + confirm +
   '</div>';
-  bindDayStrip(container, renderOpenSlotsForTrainer);
+  bindDayStrip(container, function(){ state.justBookedSlotId = null; renderOpenSlotsForTrainer(); });
   $$('[data-pick]', container).forEach(function(b){
     b.addEventListener('click', function(){
       state.pendingSlotId = (state.pendingSlotId===b.dataset.pick) ? null : b.dataset.pick;
@@ -2807,7 +2837,7 @@ function renderOpenSlotsForTrainer(){
    folded behind a toggle (same pattern as "הערות אימון"). */
 function renderMyBookings(list){
   var el = $('#myBookingsList');
-  if(!list.length){ el.innerHTML = '<p class="client-sub">אין לך אימונים קבועים כרגע.</p>'; return; }
+  if(!list.length){ el.innerHTML = '<p class="client-sub">אין לך אימונים מתוכננים.</p>'; return; }
   var upcoming = list.filter(function(s){ return !isPastSlot(s); });
   var past = list.filter(isPastSlot).reverse(); /* most recent first — history reads backwards */
   var expanded = !!state.myBookingsExpanded;
@@ -2828,6 +2858,10 @@ function renderMyBookings(list){
   var html = '';
   if(upcoming.length){
     html += upcoming.map(function(s){ return rowHtml(s, false); }).join('');
+    /* Cancelling is backlog, so this screen could only ever take a session on — a client who
+       cannot make it had nothing here at all. Say what to do instead of leaving them to guess;
+       replace this line when cancellation exists. */
+    html += '<p class="client-sub" style="margin-top:10px;">לביטול או שינוי של אימון — פנו למאמן/ת.</p>';
   } else {
     html += '<p class="client-sub">אין לך אימונים עתידיים.</p>';
   }
@@ -2855,6 +2889,26 @@ async function bookSlot(slotId){
     renderSchedule();
     return;
   }
+  /* Each trainer's grid holds only that trainer's own hours, so nothing on screen showed that
+     the 10:00 being confirmed here is the 10:00 already booked with somebody else. Checked
+     client-side rather than in RLS: the rule is about this client's own day, and every session
+     they hold is already in state — the server would have to read their other bookings to see
+     the clash at all. (26.08.26) */
+  if(slot){
+    var clash = null;
+    state.slots.forEach(function(s){
+      if(clash || s.id===slotId || s.clientId!==currentUser.clientId || s.date!==slot.date) return;
+      if(s.startTime < slot.endTime && slot.startTime < s.endTime) clash = s;
+    });
+    if(clash){
+      var clashTrainer = state.trainers.filter(function(t){ return t.id===clash.trainerId; })[0];
+      state.pendingSlotId = null;
+      alert('כבר יש לך אימון ב'+fmtDate(clash.date)+' בשעה '+clash.startTime+'–'+clash.endTime+
+        (clashTrainer ? ' עם '+clashTrainer.name : '')+'. לא ניתן לקבוע שני אימונים באותה שעה.');
+      renderSchedule();
+      return;
+    }
+  }
   var res = await sb.from('training_slots').update({status:'booked', client_id: currentUser.clientId}).eq('id', slotId).select().single();
   state.pendingSlotId = null;
   if(res.error){
@@ -2868,6 +2922,7 @@ async function bookSlot(slotId){
   }
   var idx = state.slots.findIndex(function(s){ return s.id===slotId; });
   if(idx>-1) state.slots[idx] = slotFromRow(res.data); else state.slots.push(slotFromRow(res.data));
+  state.justBookedSlotId = slotId;
   renderSchedule();
   /* best-effort email notification — booking already succeeded regardless of this call's outcome */
   sb.functions.invoke('notify-booking', { body: { slotId: slotId } }).catch(function(){});

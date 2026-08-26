@@ -370,7 +370,6 @@
     border-radius:100px; padding:3px 9px; white-space:nowrap; flex:none;
   }
   .booking-row{ padding:11px 2px; border-top:1px solid var(--border); }
-  .booking-row.first{ border-top:none; }
   .booking-row.is-past{ opacity:.62; }
   .booking-when{ font-weight:600; font-size:14.5px; font-variant-numeric:tabular-nums; }
   .booking-who{ font-size:12px; color:var(--text-muted); margin-top:2px; }
@@ -794,6 +793,7 @@ var state = {
   scheduleTrainerId: null, // client role: which trainer's open slots are being browsed; trainer/owner role: filter for "all trainers" tab
   scheduleDate: null, // day currently shown by the day strip (YYYY-MM-DD); shared by every schedule screen
   pendingSlotId: null, // client role: slot tapped in the time grid, awaiting the confirm button
+  myBookingsExpanded: false, // client role: "התורים שלי" — are the already-past appointments shown
   scheduleTab: null, // trainer/owner role: 'mine' | 'all' — which scheduling sub-tab is active (every trainer sees every trainer's slots since 19.08.26)
 };
 
@@ -1768,14 +1768,6 @@ function sortSlots(list){
     return da<db ? -1 : (da>db ? 1 : 0);
   });
 }
-/* still the right shape for "התורים שלי" — a handful of chronological appointments with a
-   trainer's name, which is a list, not a schedule. The slot grids use time chips instead. */
-function slotCardHtml(dateTimeLabel, subLabel, chipOrActionHtml){
-  return '<div class="card" style="margin-bottom:8px;padding:12px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px;">'+
-    '<div><div style="font-weight:600;">'+dateTimeLabel+'</div>'+(subLabel?'<div class="client-sub">'+subLabel+'</div>':'')+'</div>'+
-    chipOrActionHtml+
-  '</div>';
-}
 
 /* ---------- day strip + time grid (26.08.26) ----------
    The slot screens used to be one flat chronological list of full-width cards, one per
@@ -1851,10 +1843,18 @@ function dayStripHtml(dates, selected, slots){
 }
 /* rerender is called after the day changes — every screen using the strip redraws itself.
    Also re-centres the selected day: the strip carries up to a month of history, so without
-   this the screen would open scrolled to the oldest day with today somewhere off to the side. */
+   this the screen would open scrolled to the oldest day with today somewhere off to the side.
+   Centring nudges the strip's own scrollLeft instead of calling scrollIntoView, which walks
+   every scrollable ancestor — it was also scrolling .main, so the screen opened with its own
+   title ("תיאום אימונים") already pushed off the top of the phone. Expressing the move as a
+   delta between two bounding rects keeps it correct in RTL, where scrollLeft runs negative. */
 function bindDayStrip(container, rerender){
+  var strip = $('.daystrip', container);
   var active = $('.day.active', container);
-  if(active && active.scrollIntoView) active.scrollIntoView({ block:'nearest', inline:'center' });
+  if(strip && active){
+    var sRect = strip.getBoundingClientRect(), aRect = active.getBoundingClientRect();
+    strip.scrollLeft += (aRect.left + aRect.width/2) - (sRect.left + sRect.width/2);
+  }
   $$('[data-day]', container).forEach(function(b){
     b.addEventListener('click', function(){
       state.scheduleDate = b.dataset.day;
@@ -1930,7 +1930,7 @@ function renderMySlotsSection(container){
   var addBtn = date < todayStr() ? '' : '<button class="btn btn-accent btn-sm" id="btnNewSlot">+ משבצות</button>';
   container.innerHTML =
     dayStripHtml(dates, date, mySlots)+
-    '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin:2px 0 12px;flex-wrap:wrap;">'+
+    '<div class="dayhead">'+
       '<div class="day-title">'+fmtDate(date)+'</div>'+ addBtn +
     '</div>'+ grid;
   bindDayStrip(container, function(){ renderMySlotsSection(container); });
@@ -2069,7 +2069,7 @@ function renderAllSlotListBody(container){
   }).join('');
   container.innerHTML =
     dayStripHtml(dates, date, slots)+
-    '<div class="day-title">'+fmtDate(date)+'</div>'+
+    '<div class="dayhead"><div class="day-title">'+fmtDate(date)+'</div></div>'+
     (sections ? sections+slotLegendHtml(true)
               : '<div class="empty-state" style="height:auto;padding:22px 0;"><h2>'+
                   (isPastDate(date) ? 'תאריך שעבר' : 'אין משבצות ביום זה')+'</h2></div>');
@@ -2103,7 +2103,13 @@ function renderScheduleClient(main){
    slots plus their own bookings and nothing else, so there is no third party's slot to grey out. */
 function renderOpenSlotsForTrainer(){
   var container = $('#openSlotsForTrainer');
-  if(!state.scheduleTrainerId){ container.innerHTML=''; return; }
+  /* an empty div under the picker left the card looking half-finished before a trainer is
+     chosen — say what the next step is instead. */
+  if(!state.scheduleTrainerId){
+    container.innerHTML = '<p class="client-sub" style="margin-top:12px;">בחרו מאמן/ת כדי לראות את השעות הפנויות שלו/ה.</p>';
+    return;
+  }
+  var trainer = state.trainers.filter(function(t){ return t.id===state.scheduleTrainerId; })[0];
   /* past open slots are filtered out here as well as by RLS — a client only ever sees slots still ahead. */
   var visible = state.slots.filter(function(s){
     return s.trainerId===state.scheduleTrainerId &&
@@ -2113,9 +2119,12 @@ function renderOpenSlotsForTrainer(){
   var date = ensureScheduleDate(dates, visible);
   var onDay = slotsOnDate(visible, date);
   var pending = onDay.filter(function(s){ return s.id===state.pendingSlotId; })[0];
+  var openCount = onDay.filter(function(s){ return s.status==='open' && !isPastSlot(s); }).length;
   var grid = onDay.length
     ? '<div class="timegrid">'+onDay.map(function(s){
-        if(s.status!=='open') return '<div class="t '+(isPastSlot(s)?'t-past':'t-booked')+'">'+s.startTime+'<small>התור שלך</small></div>';
+        /* the client's own booking is theirs, not "taken" — accent, not the warn colour a
+           trainer's screen uses for a slot somebody else holds. */
+        if(s.status!=='open') return '<div class="t '+(isPastSlot(s)?'t-past':'t-mine')+'">'+s.startTime+'<small>התור שלך</small></div>';
         var sel = s.id===state.pendingSlotId;
         return '<button class="t '+(sel?'t-sel':'t-open')+'" data-pick="'+s.id+'">'+s.startTime+
           '<small>'+(sel?'נבחר':'פנוי')+'</small></button>';
@@ -2125,15 +2134,23 @@ function renderOpenSlotsForTrainer(){
     : '<p class="client-sub" style="margin-top:4px;">' +
       (isPastDate(date) ? 'תאריך שעבר — לא ניתן לקבוע תור.'
                         : 'אין משבצות פנויות ביום זה.') + '</p>';
+  /* the day heading answers "is it worth scanning this grid?" before the eye reaches the chips */
+  var countLabel = isPastDate(date) ? 'תאריך שעבר'
+    : (openCount ? openCount+(openCount===1 ? ' שעה פנויה' : ' שעות פנויות') : 'אין שעות פנויות');
+  /* the appointment is spelled out above the button, not inside its label: day, date and both
+     times crammed into one accent button wrapped to three lines on a phone. */
   var confirm = pending
-    ? '<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border);">'+
+    ? '<div class="confirmbar">'+
+        '<div class="confirm-when">'+fmtDate(pending.date)+' · '+pending.startTime+'–'+pending.endTime+'</div>'+
+        '<div class="confirm-who">עם '+(trainer ? trainer.name : '—')+'</div>'+
         '<button class="btn btn-accent" style="width:100%;justify-content:center;" data-book="'+pending.id+'">'+
-          'קביעת תור · '+fmtDate(pending.date)+' '+pending.startTime+'–'+pending.endTime+
-        '</button></div>'
+          'אישור קביעת תור</button>'+
+      '</div>'
     : '';
   container.innerHTML = '<div style="margin-top:14px;">'+
     dayStripHtml(dates, date, visible)+
-    '<div class="day-title" style="margin-bottom:10px;">'+fmtDate(date)+'</div>'+
+    '<div class="dayhead"><div class="day-title">'+fmtDate(date)+'</div>'+
+      '<div class="day-count">'+countLabel+'</div></div>'+
     grid + confirm +
   '</div>';
   bindDayStrip(container, renderOpenSlotsForTrainer);
@@ -2146,13 +2163,50 @@ function renderOpenSlotsForTrainer(){
   var book = $('[data-book]', container);
   if(book) onClickBusy(book, function(){ return bookSlot(book.dataset.book); });
 }
+/* `list` is every slot booked by this client, oldest first. It used to be printed exactly that
+   way — one bordered card per appointment inside an already-bordered card, sessions that had
+   already happened stacked on top — so the one thing a client opens this screen for, the next
+   appointment, sat at the bottom of the pile. Next one first, then the rest ahead, and history
+   folded behind a toggle (same pattern as "הערות אימון"). */
 function renderMyBookings(list){
   var el = $('#myBookingsList');
   if(!list.length){ el.innerHTML = '<p class="client-sub">אין לך תורים קבועים כרגע.</p>'; return; }
-  el.innerHTML = list.map(function(s){
-    var t = state.trainers.find(function(tt){ return tt.id===s.trainerId; });
-    return slotCardHtml(fmtDate(s.date)+' · '+s.startTime+'–'+s.endTime, 'עם '+(t?t.name:'—'), '');
-  }).join('');
+  var upcoming = list.filter(function(s){ return !isPastSlot(s); });
+  var past = list.filter(isPastSlot).reverse(); /* most recent first — history reads backwards */
+  var expanded = !!state.myBookingsExpanded;
+  function whoWith(s){
+    var t = state.trainers.filter(function(tt){ return tt.id===s.trainerId; })[0];
+    return 'עם '+(t ? t.name : '—');
+  }
+  function when(s){ return fmtDate(s.date)+' · '+s.startTime+'–'+s.endTime; }
+  function rowHtml(s, isPastRow){
+    return '<div class="booking-row'+(isPastRow?' is-past':'')+'">'+
+      '<div class="booking-when">'+when(s)+'</div>'+
+      '<div class="booking-who">'+whoWith(s)+'</div>'+
+    '</div>';
+  }
+  var html = '';
+  if(upcoming.length){
+    html += '<div class="booking-next">'+
+        '<div><div class="booking-when">'+when(upcoming[0])+'</div>'+
+        '<div class="booking-who">'+whoWith(upcoming[0])+'</div></div>'+
+        '<span class="booking-tag">התור הבא</span>'+
+      '</div>'+
+      upcoming.slice(1).map(function(s){ return rowHtml(s, false); }).join('');
+  } else {
+    html += '<p class="client-sub">אין לך תורים עתידיים.</p>';
+  }
+  if(past.length){
+    html += '<div style="margin-top:12px;"><button class="btn btn-sm btn-ghost" id="btnToggleMyBookings">'+
+      (expanded ? 'הצג פחות ▴' : 'אימונים קודמים ('+past.length+') ▾')+'</button></div>'+
+      (expanded ? past.map(function(s){ return rowHtml(s, true); }).join('') : '');
+  }
+  el.innerHTML = html;
+  var toggle = $('#btnToggleMyBookings', el);
+  if(toggle) toggle.addEventListener('click', function(){
+    state.myBookingsExpanded = !expanded;
+    renderMyBookings(list);
+  });
 }
 async function bookSlot(slotId){
   /* picking a time and confirming it are two separate taps, so the slot can cross its start

@@ -2274,7 +2274,7 @@ function renderScheduleClient(main){
       '</div>'+
       '<div id="openSlotsForTrainer"></div>'+
     '</div>'+
-    '<div class="card" style="margin-top:16px;"><div class="section-title">התורים שלי</div><div id="myBookingsList"></div></div>';
+    '<div class="card" style="margin-top:16px;"><div class="section-title">האימונים שלי</div><div id="myBookingsList"></div></div>';
   $('#scheduleTrainerSelect').addEventListener('change', function(e){
     state.scheduleTrainerId = e.target.value || null;
     state.pendingSlotId = null;
@@ -2350,7 +2350,7 @@ function renderOpenSlotsForTrainer(){
    folded behind a toggle (same pattern as "הערות אימון"). */
 function renderMyBookings(list){
   var el = $('#myBookingsList');
-  if(!list.length){ el.innerHTML = '<p class="client-sub">אין לך תורים קבועים כרגע.</p>'; return; }
+  if(!list.length){ el.innerHTML = '<p class="client-sub">אין לך אימונים קבועים כרגע.</p>'; return; }
   var upcoming = list.filter(function(s){ return !isPastSlot(s); });
   var past = list.filter(isPastSlot).reverse(); /* most recent first — history reads backwards */
   var expanded = !!state.myBookingsExpanded;
@@ -2369,7 +2369,7 @@ function renderMyBookings(list){
   if(upcoming.length){
     html += upcoming.map(function(s){ return rowHtml(s, false); }).join('');
   } else {
-    html += '<p class="client-sub">אין לך תורים עתידיים.</p>';
+    html += '<p class="client-sub">אין לך אימונים עתידיים.</p>';
   }
   if(past.length){
     html += '<div style="margin-top:12px;"><button class="btn btn-sm btn-ghost" id="btnToggleMyBookings">'+

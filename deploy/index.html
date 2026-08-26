@@ -1515,12 +1515,14 @@ function homeMetricsHtml(client){
   }).join('');
   return '<div class="card home-block">'+
     '<div class="home-head"><div class="section-title">המדדים האחרונים</div>'+
-      '<button class="home-link" data-gotab="measurements">כל המדדים ‹</button></div>'+
+      /* nothing to send them to before the first measurement is taken */
+      (client.measurements.length ? '<button class="home-link" data-gotab="measurements">כל המדדים ‹</button>' : '')+
+    '</div>'+
     (client.measurements.length
       ? '<div class="home-metrics">'+tiles+'</div>'+
         /* a grey arrow beside a number that clearly moved looks like a bug until you know
            what grey means here, and the client never sees the trainer-facing explanation */
-        (anyGrey ? '<div class="home-foot">שינוי אפור = קטן מכדי להיחשב שינוי אמיתי.</div>' : '')
+        (anyGrey ? '<div class="home-foot">חץ אפור: השינוי קטן מכדי להיחשב שינוי אמיתי.</div>' : '')
       : '<div class="home-empty">עדיין לא נרשמו לך מדידות.</div>')+
   '</div>';
 }
@@ -1535,19 +1537,26 @@ function homePlanHtml(client){
   if(!current){
     return '<div class="card home-block">'+head+'<div class="home-empty">עדיין לא נבנתה לך תוכנית אימון.</div></div>';
   }
+  function filled(v){ return String(v===undefined||v===null?'':v).trim() !== ''; }
+  /* the same words the תוכנית אימון tab labels its columns with, on one line: "סטים 4" survives
+     a reps field holding "20 דק׳", which a bare "4×20 דק׳" does not. */
   var rows = current.exercises.map(function(ex){
     var stats = [];
-    if(ex.sets || ex.reps) stats.push('<span dir="ltr">'+(ex.sets||'—')+'×'+(ex.reps||'—')+'</span>');
-    if(String(ex.weight===undefined||ex.weight===null?'':ex.weight).trim()) stats.push('משקל '+ex.weight);
+    if(filled(ex.sets)) stats.push('סטים '+ex.sets);
+    if(filled(ex.reps)) stats.push('חזרות '+ex.reps);
+    if(filled(ex.weight)) stats.push('משקל '+ex.weight);
     return '<div class="home-ex"><div class="home-ex-name">'+ex.name+'</div>'+
       (stats.length ? '<div class="home-ex-stats">'+stats.join(' · ')+'</div>' : '')+
     '</div>';
   }).join('');
+  /* rest times and the trainer's per-exercise notes are the two things this summary drops, so
+     the link down to the full plan is offered only when there is actually one of them to go and read */
+  var hasMore = current.exercises.some(function(ex){ return filled(ex.rest) || filled(ex.notes); });
   return '<div class="card home-block">'+head+
     '<div class="home-plan-when">בתוקף מ־'+fmtDate(current.effectiveDate)+
       (current.coachNotes ? ' · '+current.coachNotes : '')+'</div>'+
     (rows || '<div class="home-empty">אין תרגילים בתוכנית הנוכחית.</div>')+
-    (current.exercises.length ? '<button class="home-link" data-gotab="plan" style="margin-top:8px;">לתוכנית המלאה ‹</button>' : '')+
+    (hasMore ? '<button class="home-link" data-gotab="plan" style="margin-top:8px;">לתוכנית המלאה ‹</button>' : '')+
   '</div>';
 }
 

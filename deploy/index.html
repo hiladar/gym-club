@@ -897,12 +897,21 @@ function bmiValue(client){
 }
 function fmt(n){ return (n===undefined||n===null||isNaN(n)) ? '—' : (Math.round(n*10)/10).toString(); }
 var HEBREW_DAY_LETTERS = ['א','ב','ג','ד','ה','ו','ש']; // Date.getDay(): 0=Sun..6=Sat
+/* "יום ד׳ 1.7.26" — the weekday is spelled out (a bare "ד׳" in front of a date reads as an
+   abbreviation of something, not as a day), and the day/month lose their leading zeros:
+   "03.02" is a form nobody writes by hand. Year stays two-digit. (26.08.26) */
 function fmtDate(d){
   if(!d) return '—';
   var parts = d.split('-');
   var y = parseInt(parts[0],10), m = parseInt(parts[1],10), day = parseInt(parts[2],10);
   var dow = new Date(y, m-1, day).getDay();
-  return HEBREW_DAY_LETTERS[dow]+'׳ '+parts[2]+'.'+parts[1]+'.'+parts[0].slice(2);
+  return 'יום '+HEBREW_DAY_LETTERS[dow]+'׳ '+day+'.'+m+'.'+parts[0].slice(2);
+}
+/* same date without the weekday, for places too narrow to carry it (metric chips) */
+function fmtDateShort(d){
+  if(!d) return '—';
+  var parts = d.split('-');
+  return parseInt(parts[2],10)+'.'+parseInt(parts[1],10)+'.'+parts[0].slice(2);
 }
 // MediaRecorder's actual output container varies by browser (Chrome/Android: webm, Safari: often
 // mp4/m4a) — derive a matching file extension from the recorded blob's real mime type instead of
@@ -1064,7 +1073,7 @@ function renderMiniChart(container, points, opts){
     var el = document.createElement('span');
     el.className = 'chart-date'+(i===0 ? ' at-start' : (i===points.length-1 ? ' at-end' : ''));
     el.style.left = (xs[i]/w*100)+'%';
-    el.textContent = p.date.slice(8,10)+'.'+p.date.slice(5,7);
+    el.textContent = parseInt(p.date.slice(8,10),10)+'.'+parseInt(p.date.slice(5,7),10);
     strip.appendChild(el);
   });
   container.appendChild(strip);

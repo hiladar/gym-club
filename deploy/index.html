@@ -263,7 +263,14 @@
   .profile-goal{ color:var(--text-secondary); font-size:13.5px; margin-top:3px; }
   @media (min-width:760px){ .profile-head h2{ font-size:24px; } }
 
-  .tabs{ display:flex; gap:4px; border-bottom:1px solid var(--border); margin-bottom:20px; }
+  /* the client role has a fourth tab (ראשי), which on a narrow phone is wider than the
+     screen — the strip scrolls sideways rather than squeezing or wrapping the labels */
+  .tabs{
+    display:flex; gap:4px; border-bottom:1px solid var(--border); margin-bottom:20px;
+    overflow-x:auto; scrollbar-width:none; -webkit-overflow-scrolling:touch;
+  }
+  .tabs::-webkit-scrollbar{ display:none; }
+  .tab{ flex:none; }
   .tab{
     padding:11px 12px; margin-inline-end:4px; background:none; border:none; cursor:pointer;
     font-family:inherit; font-size:14px; color:var(--text-muted); border-bottom:2px solid transparent;
@@ -387,6 +394,85 @@
   .booking-row.is-past{ opacity:.62; }
   .booking-when{ font-weight:600; font-size:14.5px; font-variant-numeric:tabular-nums; }
   .booking-who{ font-size:12px; color:var(--text-muted); margin-top:2px; }
+
+  /* "האימונים שלי" (trainer/owner) — the booked half of the schedule, read as a diary:
+     grouped by day, one row per session, the client's name carrying the row and the hour
+     beside it. Rows are buttons: the name is the reason a trainer looks at this list at all,
+     so tapping it opens that client's card instead of sending them back through the list. */
+  .appt-day{ margin:18px 0 2px; }
+  .appt-day:first-child{ margin-top:0; }
+  .appt-row{
+    display:flex; align-items:center; gap:12px; width:100%; text-align:start; min-height:44px;
+    padding:11px 2px; border:none; border-top:1px solid var(--border); border-radius:0;
+    background:none; font-family:inherit; color:inherit; cursor:pointer;
+    -webkit-tap-highlight-color:transparent; touch-action:manipulation;
+    transition:background-color .12s ease;
+  }
+  .dayhead + .appt-row{ border-top:none; }  /* the day heading is the separator for its first row */
+  .appt-row:active{ background:var(--bg-sunken); }
+  .appt-row:focus-visible{ outline:2px solid var(--accent); outline-offset:-2px; }
+  .appt-row.is-past{ opacity:.62; }
+  .appt-time{ font-weight:600; font-size:14.5px; font-variant-numeric:tabular-nums; flex:none; }
+  .appt-client{ font-size:14.5px; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+  /* ===== "ראשי" — the client's landing tab (26.08.26) =====
+     A client logging in used to land on the same four-tab profile card a trainer works in, and
+     had to guess which tab held the one thing they opened the app for. A client's questions are
+     really three — when am I training next, what did the trainer say last time, where are my
+     numbers going — so this tab answers them on one screen and links into the tabs for the full
+     version of each. Nothing lives here only: every section is a summary of a tab that still
+     holds it all. Client role only; a trainer keeps landing on סקירה, the screen they work from. */
+  .home-block + .home-block{ margin-top:14px; }
+  .home-head{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px; }
+  .home-head .section-title{ margin:0; }
+  /* a link, not a button: these lead to a tab of the same card, and four accent buttons down
+     one screen would each look like the action of the page */
+  .home-link{
+    background:none; border:none; padding:6px 0; font-family:inherit; font-size:12.5px;
+    font-weight:600; color:var(--accent); cursor:pointer; white-space:nowrap; min-height:34px;
+    -webkit-tap-highlight-color:transparent; touch-action:manipulation;
+  }
+  .home-link:active{ opacity:.6; }
+  .home-link:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
+  .home-rows{ display:flex; flex-direction:column; }
+  .home-row{ display:flex; align-items:center; gap:10px; padding:11px 0; border-top:1px solid var(--border); }
+  .home-row:first-child{ border-top:none; padding-top:2px; }
+  .home-row:last-child{ padding-bottom:0; }
+  .home-when{ font-weight:600; font-size:14.5px; font-variant-numeric:tabular-nums; }
+  .home-who{ font-size:12px; color:var(--text-muted); margin-top:2px; }
+  /* היום/מחר — the two days a client scanning a column of dates is actually looking for */
+  .home-badge{
+    margin-inline-start:auto; flex:none; font-size:11px; font-weight:700;
+    padding:3px 9px; border-radius:100px; background:var(--accent-wash); color:var(--accent);
+  }
+  .home-cta{ width:100%; justify-content:center; margin-top:14px; }
+  .home-note-when{ font-size:12px; color:var(--text-muted); font-variant-numeric:tabular-nums; margin-bottom:3px; }
+  .home-note-text{ font-size:14.5px; }
+  /* the same 4-up (2-up on a phone) grid as the measurement chips, but these are read, not
+     tapped: the value, how far it moved since the measurement before it, and its date. */
+  .home-metrics{ display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }
+  @media (max-width:420px){ .home-metrics{ grid-template-columns:repeat(2,1fr); } }
+  .home-metric{ border:1px solid var(--border); border-radius:11px; padding:10px 12px; display:flex; flex-direction:column; gap:2px; }
+  .home-metric-label{ font-size:11.5px; color:var(--text-secondary); }
+  .home-metric-value{ font-size:17px; font-weight:600; font-variant-numeric:tabular-nums; }
+  .home-metric-value span{ font-size:11.5px; color:var(--text-muted); font-weight:400; }
+  .home-metric-delta{ font-size:11.5px; font-weight:600; color:var(--text-muted); font-variant-numeric:tabular-nums; }
+  .home-metric-delta.good{ color:var(--good); }
+  .home-metric-delta.bad{ color:var(--bad); }
+  /* same isolation the chips need: value+unit is one left-to-right run, aligned to the
+     line's own side so a percentage tile doesn't sit against the opposite edge of a kilogram one */
+  .home-metric-value[dir="ltr"], .home-metric-delta[dir="ltr"]{ text-align:right; }
+  .home-metric-date{ font-size:10.5px; color:var(--text-muted); font-variant-numeric:tabular-nums; }
+  .home-foot{ font-size:11.5px; color:var(--text-muted); margin-top:10px; }
+  .home-plan-when{ font-size:12.5px; color:var(--text-secondary); margin-bottom:10px; }
+  /* one line per exercise, name over numbers — the labelled four-column version is a tap away
+     on the תוכנית אימון tab, together with the per-exercise notes and the rest times */
+  .home-ex{ padding:9px 0; border-top:1px solid var(--border); }
+  .home-ex:first-child{ border-top:none; padding-top:2px; }
+  .home-ex:last-child{ padding-bottom:0; }
+  .home-ex-name{ font-size:14.5px; font-weight:600; }
+  .home-ex-stats{ font-size:12.5px; color:var(--text-secondary); margin-top:2px; }
+  .home-empty{ font-size:13.5px; color:var(--text-muted); }
 
   /* metric switcher + featured chart (mobile-first: one big chart, chips pick the metric) */
   .metric-chips{ display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-bottom:14px; }
@@ -889,7 +975,8 @@ var state = {
   scheduleDate: null, // day currently shown by the day strip (YYYY-MM-DD); shared by every schedule screen
   pendingSlotId: null, // client role: slot tapped in the time grid, awaiting the confirm button
   myBookingsExpanded: false, // client role: "התורים שלי" — are the already-past appointments shown
-  scheduleTab: null, // trainer/owner role: 'mine' | 'all' — which scheduling sub-tab is active (every trainer sees every trainer's slots since 19.08.26)
+  myAppointmentsExpanded: false, // trainer/owner role: האימונים שלי — are the sessions that already happened shown
+  scheduleTab: null, // trainer/owner role: 'appointments' | 'mine' | 'all' — which scheduling sub-tab is active (every trainer sees every trainer's slots since 19.08.26)
 };
 
 var $ = function(sel, root){ return (root||document).querySelector(sel); };
@@ -998,6 +1085,26 @@ function rowActionsHtml(editAttr, delAttr, id){
   '</td>';
 }
 
+/* Opens a client's card from anywhere — the client list, and (26.08.26) a row in the
+   trainer's appointments list, which is on the other top-level shell and therefore has to
+   switch shells as well as pick the client. One history entry either way, so the phone's
+   back gesture returns to whatever screen the client was opened from. */
+function openClientDetail(id){
+  state.activeClientId = id;
+  state.activeTab = 'overview';
+  state.planViewVersionId = null;
+  state.trainingNotesExpanded = false;
+  state.view = 'main';
+  $('#scheduleShell').classList.add('hidden');
+  var shell = $('#shell');
+  shell.classList.remove('hidden');
+  shell.setAttribute('data-view', 'detail');
+  updateNavActive();
+  history.pushState({view:'detail', clientId:id}, '', location.href);
+  renderAll();
+  scrollScreenTop();
+}
+
 /* ---------- rail ---------- */
 function renderRail(filter){
   var list = $('#clientList');
@@ -1015,16 +1122,7 @@ function renderRail(filter){
         '<span class="client-item-text"><span class="client-name">'+c.name+'</span>'+
         '<span class="client-sub">'+sub+chip+'</span></span>'+
         '<span class="client-chevron">‹</span>';
-      btn.addEventListener('click', function(){
-        state.activeClientId = c.id;
-        state.activeTab = 'overview';
-        state.planViewVersionId = null;
-        state.trainingNotesExpanded = false;
-        $('#shell').setAttribute('data-view', 'detail');
-        history.pushState({view:'detail', clientId:c.id}, '', location.href);
-        renderAll();
-        scrollScreenTop();
-      });
+      btn.addEventListener('click', function(){ openClientDetail(c.id); });
       list.appendChild(btn);
     });
 }
@@ -1215,6 +1313,13 @@ function lastMetricEntry(client, key){
   return null;
 }
 
+/* Every measurement in which THIS metric was filled in, oldest first — the metric's own
+   series, which is what both its chart and its "since last time" delta are read off. */
+function metricPoints(client, key){
+  return client.measurements.map(function(x){ return {date:x.date, value:x[key]}; })
+    .filter(function(p){ return p.value!==undefined && p.value!==null && !isNaN(p.value); });
+}
+
 function renderMetricSwitcher(panel, client){
   var chipsEl = $('#metricChips', panel);
   chipsEl.innerHTML = METRICS.map(function(m){
@@ -1239,8 +1344,7 @@ function renderMetricSwitcher(panel, client){
 function renderFeaturedChart(panel, client){
   var m = METRICS.find(function(x){ return x.key===state.featuredMetric; }) || METRICS[0];
   /* only measurements where this metric was actually filled in are points on its chart */
-  var pts = client.measurements.map(function(x){ return {date:x.date, value:x[m.key]}; })
-    .filter(function(p){ return p.value!==undefined && p.value!==null && !isNaN(p.value); });
+  var pts = metricPoints(client, m.key);
   var host = $('#featuredCard', panel);
   /* A single point is not a trend: nothing to draw a line between and no previous measurement
      to compare to. The whole card goes away rather than standing there explaining itself — the
@@ -1271,14 +1375,27 @@ function renderMain(){
     return;
   }
 
+  /* ראשי is the client's own landing tab and nobody else's — a trainer opens a card to work
+     in it, and would only be reading a summary of the three tabs already in front of them. */
+  var isClient = currentUser.role === 'client';
+  var tabs = (isClient ? [{key:'home', label:'ראשי'}] : []).concat([
+    {key:'overview', label:'סקירה'},
+    {key:'measurements', label:'מדדים'},
+    {key:'plan', label:'תוכנית אימון'}
+  ]);
+  if(!tabs.some(function(t){ return t.key===state.activeTab; })) state.activeTab = tabs[0].key;
+
   /* The goal line and the edit/delete actions belong to the profile itself, so they
-     show only on the סקירה tab. The name stays on every tab as context. */
+     show only on the סקירה tab. The name stays on every tab as context — except on ראשי,
+     where the client is looking at their own screen and a bare full name reads like a file
+     header; the greeting says the same thing and the full details are one tab away. */
   var onOverview = state.activeTab === 'overview';
+  var onHome = state.activeTab === 'home';
   main.innerHTML =
     '<button class="btn btn-sm btn-ghost back-btn" id="btnBackToList">→ חזרה לרשימה</button>'+
     '<div class="profile-head">'+
-      '<div><h2>'+client.name+'</h2>'+
-        (onOverview ? '<div class="profile-goal">'+(client.goal||'')+'</div>' : '')+
+      '<div><h2>'+(onHome ? 'שלום, '+client.name.trim().split(/\s+/)[0] : client.name)+'</h2>'+
+        (onOverview || onHome ? '<div class="profile-goal">'+(client.goal||'')+'</div>' : '')+
       '</div>'+
       (onOverview
         ? '<div style="display:flex;gap:8px;">'+
@@ -1288,13 +1405,9 @@ function renderMain(){
         : '')+
     '</div>'+
     '<div class="tabs">'+
-      '<button class="tab" data-tab="overview">סקירה</button>'+
-      '<button class="tab" data-tab="measurements">מדדים</button>'+
-      '<button class="tab" data-tab="plan">תוכנית אימון</button>'+
+      tabs.map(function(t){ return '<button class="tab" data-tab="'+t.key+'">'+t.label+'</button>'; }).join('')+
     '</div>'+
-    '<div class="panel" data-panel="overview"></div>'+
-    '<div class="panel" data-panel="measurements"></div>'+
-    '<div class="panel" data-panel="plan"></div>';
+    tabs.map(function(t){ return '<div class="panel" data-panel="'+t.key+'"></div>'; }).join('');
 
   $$('.tab', main).forEach(function(t){
     if(t.dataset.tab===state.activeTab) t.classList.add('active');
@@ -1319,9 +1432,145 @@ function renderMain(){
     history.back();
   });
 
+  if(isClient) renderHomePanel($('[data-panel="home"]', main), client);
   renderOverviewPanel($('[data-panel="overview"]', main), client);
   renderMeasurementsPanel($('[data-panel="measurements"]', main), client);
   renderPlanPanel($('[data-panel="plan"]', main), client);
+}
+
+/* ---------- client home tab ("ראשי", 26.08.26) ---------- */
+/* Client role only. Each section here is a summary whose full version lives in one of the
+   other tabs (or on the scheduling screen), and each ends in the link that gets there — see
+   the .home-* CSS for why the tab exists at all. */
+
+var HOME_UPCOMING_LIMIT = 3;      /* enough to answer "what does my week look like" */
+var HOME_NOTE_MAX_AGE_DAYS = 7;   /* see homeLastNoteHtml */
+
+function homeUpcomingHtml(client){
+  var upcoming = sortSlots(state.slots.filter(function(s){
+    return s.clientId===client.id && !isPastSlot(s);
+  }));
+  var shown = upcoming.slice(0, HOME_UPCOMING_LIMIT);
+  var body = shown.length
+    ? '<div class="home-rows">'+shown.map(function(s){
+        var t = state.trainers.filter(function(tt){ return tt.id===s.trainerId; })[0];
+        var rel = relDayLabel(s.date);
+        return '<div class="home-row">'+
+          '<div><div class="home-when">'+fmtDate(s.date)+' · '+s.startTime+'–'+s.endTime+'</div>'+
+          '<div class="home-who">עם '+(t ? t.name : '—')+'</div></div>'+
+          (rel ? '<span class="home-badge">'+rel+'</span>' : '')+
+        '</div>';
+      }).join('')+'</div>'
+    : '<div class="home-empty">אין לך אימונים קבועים כרגע.</div>';
+  return '<div class="card home-block">'+
+    '<div class="home-head"><div class="section-title">האימונים הקרובים</div>'+
+      (upcoming.length > shown.length
+        ? '<button class="home-link" data-goschedule="1">כל האימונים ('+upcoming.length+') ‹</button>'
+        : '')+
+    '</div>'+
+    body+
+    '<button class="btn btn-accent home-cta" data-goschedule="1">קביעת אימון נוסף</button>'+
+  '</div>';
+}
+
+/* The note earns its place on the home screen only while it is still about the last session.
+   With one to three sessions a week, a note older than a week means the client has trained
+   since without one — and a sentence from a month ago read as if it were about this morning. */
+function homeLastNoteHtml(client){
+  var last = (client.trainingNotes||[]).slice().sort(function(a,b){
+    var da = a.date+' '+(a.time||''), db = b.date+' '+(b.time||'');
+    return da<db ? 1 : -1;
+  })[0];
+  if(!last || last.date < addDaysToDate(todayStr(), -HOME_NOTE_MAX_AGE_DAYS)) return '';
+  return '<div class="card home-block">'+
+    '<div class="home-head"><div class="section-title">מהאימון האחרון</div>'+
+      '<button class="home-link" data-gotab="plan">כל ההערות ‹</button></div>'+
+    '<div class="home-note-when">'+fmtDate(last.date)+(last.time ? ' · '+last.time : '')+'</div>'+
+    '<div class="home-note-text">'+last.note+'</div>'+
+  '</div>';
+}
+
+function homeMetricsHtml(client){
+  var anyGrey = false;
+  var tiles = METRICS.map(function(m){
+    var pts = metricPoints(client, m.key);
+    var last = pts[pts.length-1], prev = pts[pts.length-2];
+    var deltaHtml = '';
+    if(last && prev){
+      /* same threshold the measurements tab paints its arrows by: under the metric's noise
+         band the arrow stays grey, because a scale drifts that much on its own. */
+      var delta = last.value - prev.value;
+      var tone = deltaTone(m, delta);
+      if(!tone && m.goodDir) anyGrey = true;
+      deltaHtml = '<span class="home-metric-delta '+tone+'"'+(m.ltr?' dir="ltr"':'')+'>'+
+        (delta===0 ? '—' : (delta>0 ? '▲' : '▼'))+' '+fmt(Math.abs(delta))+m.unit+'</span>';
+    }
+    return '<div class="home-metric">'+
+      '<span class="home-metric-label">'+m.label+'</span>'+
+      '<span class="home-metric-value"'+(m.ltr?' dir="ltr"':'')+'>'+
+        (last?fmt(last.value):'—')+'<span>'+m.unit+'</span></span>'+
+      deltaHtml+
+      '<span class="home-metric-date">'+(last?fmtDateShort(last.date):'')+'</span>'+
+    '</div>';
+  }).join('');
+  return '<div class="card home-block">'+
+    '<div class="home-head"><div class="section-title">המדדים האחרונים</div>'+
+      '<button class="home-link" data-gotab="measurements">כל המדדים ‹</button></div>'+
+    (client.measurements.length
+      ? '<div class="home-metrics">'+tiles+'</div>'+
+        /* a grey arrow beside a number that clearly moved looks like a bug until you know
+           what grey means here, and the client never sees the trainer-facing explanation */
+        (anyGrey ? '<div class="home-foot">שינוי אפור = קטן מכדי להיחשב שינוי אמיתי.</div>' : '')
+      : '<div class="home-empty">עדיין לא נרשמו לך מדידות.</div>')+
+  '</div>';
+}
+
+function homePlanHtml(client){
+  var sorted = client.plans.slice().sort(function(a,b){ return a.effectiveDate<b.effectiveDate?1:-1; });
+  var current = sorted[0];
+  var head = '<div class="home-head"><div class="section-title">תוכנית האימונים</div>'+
+    /* only worth offering once there IS an older version to look at */
+    (sorted.length > 1 ? '<button class="home-link" data-gotab="plan">תוכניות קודמות ('+(sorted.length-1)+') ‹</button>' : '')+
+  '</div>';
+  if(!current){
+    return '<div class="card home-block">'+head+'<div class="home-empty">עדיין לא נבנתה לך תוכנית אימון.</div></div>';
+  }
+  var rows = current.exercises.map(function(ex){
+    var stats = [];
+    if(ex.sets || ex.reps) stats.push('<span dir="ltr">'+(ex.sets||'—')+'×'+(ex.reps||'—')+'</span>');
+    if(String(ex.weight===undefined||ex.weight===null?'':ex.weight).trim()) stats.push('משקל '+ex.weight);
+    return '<div class="home-ex"><div class="home-ex-name">'+ex.name+'</div>'+
+      (stats.length ? '<div class="home-ex-stats">'+stats.join(' · ')+'</div>' : '')+
+    '</div>';
+  }).join('');
+  return '<div class="card home-block">'+head+
+    '<div class="home-plan-when">בתוקף מ־'+fmtDate(current.effectiveDate)+
+      (current.coachNotes ? ' · '+current.coachNotes : '')+'</div>'+
+    (rows || '<div class="home-empty">אין תרגילים בתוכנית הנוכחית.</div>')+
+    (current.exercises.length ? '<button class="home-link" data-gotab="plan" style="margin-top:8px;">לתוכנית המלאה ‹</button>' : '')+
+  '</div>';
+}
+
+function renderHomePanel(panel, client){
+  panel.innerHTML =
+    homeUpcomingHtml(client)+
+    homeLastNoteHtml(client)+
+    homeMetricsHtml(client)+
+    homePlanHtml(client);
+
+  /* a link into another tab of the same card: switch and re-render, then go to the top of the
+     new tab — these links sit far down a long screen, and staying at that offset lands the
+     reader in the middle of whatever they opened. */
+  $$('[data-gotab]', panel).forEach(function(b){
+    b.addEventListener('click', function(){
+      state.activeTab = b.dataset.gotab;
+      renderMain();
+      scrollScreenTop();
+    });
+  });
+  $$('[data-goschedule]', panel).forEach(function(b){
+    b.addEventListener('click', goToSchedule);
+  });
 }
 
 function renderOverviewPanel(panel, client){
@@ -1924,6 +2173,9 @@ function goToMainNav(){
   var isClient = currentUser.role === 'client';
   var targetView = isClient ? 'detail' : 'list'; /* a client has one profile, no list */
   if(state.view === 'main' && shell.getAttribute('data-view') === targetView) return;
+  /* "הפרופיל שלי" means the client's home screen, not whichever tab they wandered off on
+     before opening תיאום אימונים */
+  if(isClient) state.activeTab = 'home';
   state.view = 'main';
   $('#scheduleShell').classList.add('hidden');
   shell.classList.remove('hidden');
@@ -2231,16 +2483,109 @@ function openSlotForm(presetDate){
   });
 }
 
+/* ---------- "האימונים שלי" (trainer/owner, 26.08.26) ----------
+   The two existing tabs both answer questions about *slots*: which hours have I opened, and
+   what does everyone's board look like. Neither answers the one a trainer actually asks each
+   morning — who is coming to me, and when — because a booked slot is only visible inside the
+   day it belongs to, one day at a time. This tab is the same data read the other way round:
+   every booked slot of mine, across days, nearest first.
+
+   Days are the grouping (a trainer thinks "Tuesday", not "the 27th"), sessions that already
+   happened fold away behind a toggle exactly like "התורים שלי" on the client side, and a row
+   opens the client's card, since "who is coming" is usually followed by "what are they doing
+   today". */
+function groupSlotsByDate(list){
+  var order = [], byDate = {};
+  list.forEach(function(s){
+    if(!byDate[s.date]){ byDate[s.date] = []; order.push(s.date); }
+    byDate[s.date].push(s);
+  });
+  return order.map(function(d){ return { date:d, slots:byDate[d] }; });
+}
+/* "היום"/"מחר" beside the date: a trainer scanning the list is really looking for those two
+   days, and the weekday alone doesn't say which one is now. */
+function relDayLabel(date){
+  var today = todayStr();
+  if(date === today) return 'היום';
+  var parts = today.split('-');
+  var d = new Date(parseInt(parts[0],10), parseInt(parts[1],10)-1, parseInt(parts[2],10)+1);
+  var tomorrow = d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate());
+  return date === tomorrow ? 'מחר' : '';
+}
+function apptRowHtml(slot, isPastRow){
+  var c = slot.clientId ? getClient(slot.clientId) : null;
+  var inner = '<span class="appt-time">'+slot.startTime+'–'+slot.endTime+'</span>'+
+    '<span class="appt-client">'+(c ? c.name : 'לקוח/ה לא ידוע/ה')+'</span>';
+  var cls = 'appt-row'+(isPastRow ? ' is-past' : '');
+  /* a client the trainer can't load (deleted, or outside what RLS returns) has no card to
+     open, so that row is plain text rather than a button that would lead nowhere */
+  if(!c) return '<div class="'+cls+'">'+inner+'</div>';
+  return '<button class="'+cls+'" data-appt-client="'+c.id+'">'+inner+
+    '<span class="client-chevron">‹</span></button>';
+}
+function apptDaysHtml(list, isPastRows){
+  return groupSlotsByDate(list).map(function(g){
+    /* today's date can head a group in both halves of the list — the sessions still ahead and
+       the ones already done — so the "היום" label is worth keeping on the past side too */
+    var rel = relDayLabel(g.date);
+    return '<div class="dayhead appt-day"><div class="day-title">'+fmtDate(g.date)+'</div>'+
+      (rel ? '<div class="day-count">'+rel+'</div>' : '')+'</div>'+
+      g.slots.map(function(s){ return apptRowHtml(s, isPastRows); }).join('');
+  }).join('');
+}
+function renderMyAppointmentsSection(container){
+  var mine = sortSlots(state.slots.filter(function(s){
+    return s.trainerId===currentUser.trainerId && s.status==='booked' && s.clientId;
+  }));
+  if(!mine.length){
+    container.innerHTML = '<div class="card"><p class="client-sub">עדיין לא נקבעו לך אימונים. '+
+      'משבצות שתפתחו בטאב "המשבצות שלי" יופיעו כאן ברגע שלקוח/ה יקבע/תקבע בהן תור.</p></div>';
+    return;
+  }
+  var upcoming = mine.filter(function(s){ return !isPastSlot(s); });
+  /* history reads backwards: the most recent day first, but the hours inside a day stay in
+     the order they were worked */
+  var past = groupSlotsByDate(mine.filter(isPastSlot)).reverse()
+    .reduce(function(acc, g){ return acc.concat(g.slots); }, []);
+  var expanded = !!state.myAppointmentsExpanded;
+  var html = '<div class="card">';
+  html += upcoming.length
+    ? '<div class="section-title">אימונים קרובים ('+upcoming.length+')</div>'+apptDaysHtml(upcoming, false)
+    : '<div class="section-title">אימונים קרובים</div><p class="client-sub">אין אימונים שנקבעו לך קדימה.</p>';
+  if(past.length){
+    html += '<div style="margin-top:16px;"><button class="btn btn-sm btn-ghost" id="btnToggleMyAppointments">'+
+      (expanded ? 'הצג פחות ▴' : 'אימונים שהיו ('+past.length+') ▾')+'</button></div>'+
+      (expanded ? apptDaysHtml(past, true) : '');
+  }
+  container.innerHTML = html + '</div>';
+  var toggle = $('#btnToggleMyAppointments', container);
+  if(toggle) toggle.addEventListener('click', function(){
+    state.myAppointmentsExpanded = !expanded;
+    renderMyAppointmentsSection(container);
+  });
+  $$('[data-appt-client]', container).forEach(function(b){
+    b.addEventListener('click', function(){ openClientDetail(b.dataset.apptClient); });
+  });
+}
+
 /* Both trainer and owner get the same two-tab schedule screen: "המשבצות שלי" to */
 /* manage their own slots, and "כל המאמנים" to browse every trainer's slots (view-only) — */
 /* every trainer can see every trainer's schedule since 19.08.26, see PROJECT.md "פישוט 19.08.26". */
+var SCHEDULE_TAB_SUBTITLES = {
+  appointments: 'האימונים שנקבעו לך',
+  mine: 'משבצות הזמן שלך',
+  all: 'משבצות כל המאמנים'
+};
 function renderScheduleTrainerOrOwner(main){
-  if(!state.scheduleTab) state.scheduleTab = 'mine';
+  /* the screen opens on the appointments list: "who is coming to me" is what a trainer
+     comes here for daily, while opening slots is a weekly act (26.08.26) */
+  if(!state.scheduleTab) state.scheduleTab = 'appointments';
   main.innerHTML =
     '<div class="profile-head"><div><h2>תיאום אימונים</h2><div class="profile-goal">'+
-      (state.scheduleTab==='mine' ? 'משבצות הזמן שלך' : 'משבצות כל המאמנים')+
+      SCHEDULE_TAB_SUBTITLES[state.scheduleTab]+
     '</div></div></div>'+
     '<div class="tabs">'+
+      '<button class="tab" data-schedule-tab="appointments">האימונים שלי</button>'+
       '<button class="tab" data-schedule-tab="mine">המשבצות שלי</button>'+
       '<button class="tab" data-schedule-tab="all">כל המאמנים</button>'+
     '</div>'+
@@ -2253,7 +2598,8 @@ function renderScheduleTrainerOrOwner(main){
     });
   });
   var body = $('#scheduleTabBody', main);
-  if(state.scheduleTab === 'mine') renderMySlotsSection(body);
+  if(state.scheduleTab === 'appointments') renderMyAppointmentsSection(body);
+  else if(state.scheduleTab === 'mine') renderMySlotsSection(body);
   else renderAllTrainersSlots(body);
 }
 function renderAllTrainersSlots(container){
@@ -2509,6 +2855,7 @@ async function afterLogin(session){
 
   if(currentUser.role === 'client'){
     state.activeClientId = currentUser.clientId;
+    state.activeTab = 'home';
     $('#shell').setAttribute('data-view', 'detail');
     history.replaceState({view:'detail', clientId: currentUser.clientId}, '', location.href);
   } else {

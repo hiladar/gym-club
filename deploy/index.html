@@ -885,6 +885,19 @@ function onClickBusy(el, handler){
   });
 }
 
+/* Switching screens used to leave the new one at whatever scroll offset the old one was at:
+   pick a client from halfway down the list, or open תיאום אימונים from the bottom of a client's
+   measurements, and the next screen opened with its own heading already off the top. There are
+   two scrollers in play — the window and .main / #scheduleMain, which scroll internally on a
+   tall viewport — so both get reset. (26.08.26) */
+function scrollScreenTop(){
+  try{ window.scrollTo(0,0); } catch(err){}
+  ['#main','#scheduleMain','#clientList'].forEach(function(sel){
+    var el = $(sel);
+    if(el) el.scrollTop = 0;
+  });
+}
+
 function getClient(id){ return state.clients.find(function(c){ return c.id===id; }); }
 function bmiFor(client, weight){
   if(!client.height || !weight) return null;
@@ -966,6 +979,7 @@ function renderRail(filter){
         $('#shell').setAttribute('data-view', 'detail');
         history.pushState({view:'detail', clientId:c.id}, '', location.href);
         renderAll();
+        scrollScreenTop();
       });
       list.appendChild(btn);
     });
@@ -1802,6 +1816,7 @@ function showScheduleView(){
   $('#scheduleShell').classList.remove('hidden');
   updateNavActive();
   renderSchedule();
+  scrollScreenTop();
 }
 function restoreMainFromHistory(s){
   state.view = 'main';
@@ -1811,6 +1826,7 @@ function restoreMainFromHistory(s){
   if(currentUser.role === 'client'){
     $('#shell').setAttribute('data-view', 'detail'); /* client has one client, no list to go back to */
     renderAll();
+    scrollScreenTop();
     return;
   }
   if(s && s.view === 'detail' && s.clientId){
@@ -1820,6 +1836,7 @@ function restoreMainFromHistory(s){
     $('#shell').setAttribute('data-view', 'list');
   }
   renderAll();
+  scrollScreenTop();
 }
 function goToSchedule(){
   if(state.view === 'schedule') return;
@@ -1843,6 +1860,7 @@ function goToMainNav(){
   updateNavActive();
   history.pushState(isClient ? {view:'detail', clientId:state.activeClientId} : {view:'list'}, '', location.href);
   renderAll();
+  scrollScreenTop();
 }
 
 window.addEventListener('popstate', function(e){

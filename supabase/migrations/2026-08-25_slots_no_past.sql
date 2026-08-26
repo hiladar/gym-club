@@ -1,4 +1,4 @@
--- Migration: no time slots in the past, 2026-08-25.
+-- Migration: no time slots in the past, 2026-08-25 (revised 2026-08-26 — see "revision" below).
 -- Paste this into the Supabase SQL editor (Project → SQL Editor → New query) and run it.
 -- Safe to re-run — uses CREATE OR REPLACE / DROP POLICY IF EXISTS.
 -- STATUS: written locally, NOT yet run against the real project.
@@ -24,6 +24,14 @@
 -- Prerequisites: 2026-08-08_user_roles_and_login.sql, 2026-08-18_training_slots.sql and
 -- 2026-08-19_simplify_trainer_client_access.sql must already be applied (this depends on
 -- is_owner(), is_any_trainer(), is_any_client(), current_trainer_id(), current_client_id()).
+--
+-- Revision 2026-08-26, before this ever ran:
+--   * every column reference is written as training_slots.date / training_slots.start_time.
+--     `date` is also a type name in Postgres, and a bare `date` as a function argument is
+--     the kind of thing that is either fine or a parse error depending on details nobody
+--     should have to reason about in a production SQL editor. Qualifying costs nothing.
+--   * training_slots_update_owner now carries the same guard (see section 4) — without it
+--     the rule had a pre-installed hole for the cancel/reschedule feature in the backlog.
 
 -- helper so the same expression isn't spelled out in three policies
 create or replace function slot_is_future(d date, t time) returns boolean
@@ -36,7 +44,7 @@ drop policy if exists training_slots_insert on training_slots;
 create policy training_slots_insert on training_slots for insert
   with check (
     (is_owner() or trainer_id = current_trainer_id())
-    and slot_is_future(date, start_time)
+    and slot_is_future(training_slots.date, training_slots.start_time)
   );
 
 -- ---------- 2. a client only SEES open slots that are still ahead ----------
@@ -47,7 +55,7 @@ create policy training_slots_select on training_slots for select
   using (
     is_owner()
     or is_any_trainer()
-    or (status = 'open' and is_any_client() and slot_is_future(date, start_time))
+    or (status = 'open' and is_any_client() and slot_is_future(training_slots.date, training_slots.start_time))
     or client_id = current_client_id()
   );
 
@@ -56,8 +64,21 @@ create policy training_slots_select on training_slots for select
 -- client holding a slot id from an earlier page load could otherwise still book it.
 drop policy if exists training_slots_update_book on training_slots;
 create policy training_slots_update_book on training_slots for update
-  using (status = 'open' and is_any_client() and slot_is_future(date, start_time))
+  using (status = 'open' and is_any_client() and slot_is_future(training_slots.date, training_slots.start_time))
   with check (status = 'booked' and client_id = current_client_id());
 
--- training_slots_update_owner is deliberately untouched: a trainer/owner editing an
--- existing row (including an old one) is not the case this migration is about.
+-- ---------- 4. a trainer/owner cannot move an existing slot into the past either ----------
+-- The guard is on WITH CHECK only (the row as it will be), not on USING (the row as it is),
+-- so this is specifically "you may not end up with a past slot" rather than "you may not
+-- touch old rows"... except that an untouched past row also fails WITH CHECK, which makes
+-- past slots effectively read-only. That is the intended reading of "no slots in the past"
+-- today, when no slot-editing UI exists at all. It has to be revisited the moment
+-- cancel/reschedule is built (see OPEN_QUESTIONS.md) — cancelling a slot that has already
+-- passed is a legitimate thing to want, and this policy would refuse it.
+drop policy if exists training_slots_update_owner on training_slots;
+create policy training_slots_update_owner on training_slots for update
+  using (is_owner() or trainer_id = current_trainer_id())
+  with check (
+    (is_owner() or trainer_id = current_trainer_id())
+    and slot_is_future(training_slots.date, training_slots.start_time)
+  );

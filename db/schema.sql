@@ -260,7 +260,7 @@ create policy training_slots_select on training_slots for select
   using (
     is_owner()
     or is_any_trainer()
-    or (status = 'open' and is_any_client() and slot_is_future(date, start_time))
+    or (status = 'open' and is_any_client() and slot_is_future(training_slots.date, training_slots.start_time))
     or client_id = current_client_id()
   );
 
@@ -270,7 +270,7 @@ create policy training_slots_select on training_slots for select
 create policy training_slots_insert on training_slots for insert
   with check (
     (is_owner() or trainer_id = current_trainer_id())
-    and slot_is_future(date, start_time)
+    and slot_is_future(training_slots.date, training_slots.start_time)
   );
 
 -- two permissive UPDATE policies, combined with OR by Postgres:
@@ -281,14 +281,20 @@ create policy training_slots_insert on training_slots for insert
 --      the update payload, otherwise a client could in principle also smuggle in a
 --      trainer_id/date/time change in the same request. Acceptable for a small
 --      private-club MVP; a stricter version would need a database trigger/RPC.
+-- the future-guard is on WITH CHECK (the row as it will be), so a trainer cannot move a
+-- slot into the past — and, as a side effect, a past row is read-only. Intended while there
+-- is no slot-editing UI; must be revisited when cancel/reschedule is built (26.08.26).
 create policy training_slots_update_owner on training_slots for update
   using (is_owner() or trainer_id = current_trainer_id())
-  with check (is_owner() or trainer_id = current_trainer_id());
+  with check (
+    (is_owner() or trainer_id = current_trainer_id())
+    and slot_is_future(training_slots.date, training_slots.start_time)
+  );
 -- the slot_is_future() guard is repeated here on purpose: UPDATE is evaluated
 -- independently of the SELECT policy, so without it a client holding a slot id from an
 -- earlier page load could still book a slot whose time has already passed.
 create policy training_slots_update_book on training_slots for update
-  using (status = 'open' and is_any_client() and slot_is_future(date, start_time))
+  using (status = 'open' and is_any_client() and slot_is_future(training_slots.date, training_slots.start_time))
   with check (status = 'booked' and client_id = current_client_id());
 
 -- no delete policy: cancelling/removing a slot is backlog (see table comment above),

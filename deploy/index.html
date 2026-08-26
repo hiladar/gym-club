@@ -654,20 +654,36 @@ function generateSlotTimes(fromTime, toTime, lengthMin){
 }
 
 /* --- "past slot" guards (added 25.08.26) --- a trainer cannot open a slot that already
-   happened, and a client is never offered one. Deliberately uses the DEVICE's local clock
-   (getFullYear/getHours), not toISOString(), which is UTC: at 22:00 Israel time UTC is
-   already the next day, so a UTC "today" would let a trainer open slots for hours that
-   have passed. Server-side the same rule lives in the RLS policies (see
-   supabase/migrations/2026-08-25_slots_no_past.sql) — this is the UX half of it. */
+   happened, and a client is never offered one. Server-side the same rule lives in the RLS
+   policies (see supabase/migrations/2026-08-25_slots_no_past.sql) — this is the UX half.
+   Both halves must agree on what "now" is, so the clock read here is the CLUB's clock
+   (Asia/Jerusalem), which is what the RLS policies compare against — not the device's
+   timezone and not UTC. A trainer travelling abroad, or a device left on the wrong
+   timezone, would otherwise compute a different "today" than the server and get a whole
+   block of slots rejected. (26.08.26 — replaced the original device-local version.) */
 function pad2(n){ return (n<10?'0':'')+n; }
-function todayStr(){
+var CLUB_TZ = 'Asia/Jerusalem';
+var clubClockFmt = null;
+try {
+  clubClockFmt = new Intl.DateTimeFormat('en-GB', {
+    timeZone: CLUB_TZ, hourCycle: 'h23',
+    year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit'
+  });
+} catch(e){ clubClockFmt = null; } /* ancient browser without tz support — falls back below */
+/* returns {date:'YYYY-MM-DD', time:'HH:MM'} in club time. formatToParts is used rather than
+   a formatted string so the output never depends on the locale's ordering or separators. */
+function clubNow(){
   var d = new Date();
-  return d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate());
+  if(!clubClockFmt){
+    return { date: d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate()),
+             time: pad2(d.getHours())+':'+pad2(d.getMinutes()) };
+  }
+  var o = {};
+  clubClockFmt.formatToParts(d).forEach(function(part){ o[part.type] = part.value; });
+  return { date: o.year+'-'+o.month+'-'+o.day, time: (o.hour==='24'?'00':o.hour)+':'+o.minute };
 }
-function nowTimeStr(){
-  var d = new Date();
-  return pad2(d.getHours())+':'+pad2(d.getMinutes());
-}
+function todayStr(){ return clubNow().date; }
+function nowTimeStr(){ return clubNow().time; }
 /* a slot is "past" once its START time has arrived — an already-running session is not
    something a client should still be able to book. */
 function isPastSlot(slot){
@@ -1264,8 +1280,9 @@ function renderTrainingNotes(panel, client, viewing, sortedPlans){
 
 function openTrainingNoteForm(client, note){
   var isNew = !note;
-  var now = new Date();
-  var v = note || {date:now.toISOString().slice(0,10), time:now.toTimeString().slice(0,5), note:'', audioUrl:null};
+  /* club-local date AND time — this used to mix a UTC date with a local time, so a note
+     added at 23:30 in Israel was pre-filled with tomorrow's date (fixed 26.08.26). */
+  var v = note || {date:todayStr(), time:nowTimeStr(), note:'', audioUrl:null};
   var body =
     '<div class="form-grid">'+
       '<div class="form-row"><label>תאריך</label><input type="date" id="f_notedate" value="'+v.date+'"></div>'+
@@ -1475,7 +1492,7 @@ function openClientForm(client){
 
 function openMeasurementForm(client, m){
   var isNew = !m;
-  var v = m || {date:new Date().toISOString().slice(0,10),weight:'',fat:'',water:'',muscle:'',fatMass:'',waist:'',chest:'',arm:'',thigh:'',notes:''};
+  var v = m || {date:todayStr(),weight:'',fat:'',water:'',muscle:'',fatMass:'',waist:'',chest:'',arm:'',thigh:'',notes:''};
   var body =
     '<div class="form-row"><label>תאריך</label><input type="date" id="f_date" value="'+v.date+'"></div>'+
     '<div class="form-grid">'+
@@ -1524,7 +1541,7 @@ function openMeasurementForm(client, m){
 
 function openPlanForm(client, plan){
   var isNew = !plan;
-  var v = plan || {effectiveDate:new Date().toISOString().slice(0,10), coachNotes:'', exercises:[{name:'',sets:'',reps:'',weight:'',rest:'',notes:''}]};
+  var v = plan || {effectiveDate:todayStr(), coachNotes:'', exercises:[{name:'',sets:'',reps:'',weight:'',rest:'',notes:''}]};
   function exCardHtml(ex, i){
     return '<div class="ex-card" data-ex-row="'+i+'">'+
       '<div class="ex-card-top">'+
@@ -1782,9 +1799,31 @@ function slotLegendHtml(withPast){
 
 function renderSchedule(){
   var main = $('#scheduleMain');
+  schedulePastCount = countPastSlots();
   if(currentUser.role === 'trainer' || currentUser.role === 'owner') return renderScheduleTrainerOrOwner(main);
   if(currentUser.role === 'client') return renderScheduleClient(main);
 }
+/* The line between past and future moves on its own, but nothing on the schedule screen
+   re-rendered after the first paint — a phone left open kept offering slots that had already
+   started, and the day strip kept counting them as free. Re-render only when the number of
+   past slots actually changed (a slot crossing its start time always moves that count), so
+   the ticks that change nothing leave scroll position and the pending selection alone.
+   Added 26.08.26. */
+var schedulePastCount = -1;
+function countPastSlots(){
+  if(!state.slots) return -1;
+  var n = 0;
+  state.slots.forEach(function(s){ if(isPastSlot(s)) n++; });
+  return n;
+}
+function refreshScheduleIfStale(){
+  if(state.view !== 'schedule' || document.hidden || !state.slots) return;
+  if(countPastSlots() === schedulePastCount) return;
+  renderSchedule();
+}
+setInterval(refreshScheduleIfStale, 30000);
+document.addEventListener('visibilitychange', function(){ if(!document.hidden) refreshScheduleIfStale(); });
+window.addEventListener('focus', refreshScheduleIfStale);
 
 /* used by the "המשבצות שלי" tab of renderScheduleTrainerOrOwner — renders the day strip, */
 /* the selected day's slots as a chip grid, and the add-slots button for that same day. */
@@ -2025,10 +2064,24 @@ function renderMyBookings(list){
   }).join('');
 }
 async function bookSlot(slotId){
+  /* picking a time and confirming it are two separate taps, so the slot can cross its start
+     time while the confirm button sits on screen — check again here rather than letting the
+     server bounce it. (26.08.26) */
+  var slot = null;
+  state.slots.forEach(function(s){ if(s.id===slotId) slot = s; });
+  if(slot && isPastSlot(slot)){
+    state.pendingSlotId = null;
+    alert('השעה הזו כבר התחילה — בחרו משבצת אחרת.');
+    renderSchedule();
+    return;
+  }
   var res = await sb.from('training_slots').update({status:'booked', client_id: currentUser.clientId}).eq('id', slotId).select().single();
   state.pendingSlotId = null;
   if(res.error){
-    alert('לא ניתן היה לקבוע את התור (ייתכן שמישהו כבר תפס את המשבצת). מרעננים את הרשימה.');
+    /* PostgREST returns the same "no rows returned" error whether another client got there
+       first or the RLS future-check refused the row, so the message names both possibilities
+       instead of asserting the one we cannot actually distinguish. */
+    alert('המשבצת כבר לא זמינה — ייתכן שמישהו הקדים אתכם, או שהשעה עברה בינתיים. מרעננים את הרשימה.');
     try{ await loadState(); } catch(e){}
     renderSchedule();
     return;

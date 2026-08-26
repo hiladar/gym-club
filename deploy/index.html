@@ -311,10 +311,9 @@
   .day .dow{ display:block; font-size:11px; color:var(--text-secondary); }
   .day .num{ display:block; font-size:17px; font-weight:600; line-height:1.2; font-variant-numeric:tabular-nums; }
   .day .cnt{ display:block; font-size:10px; color:var(--text-muted); }
-  /* a day with nothing on it — and a day already behind us — stays in place, dimmed:
-     dropping either would shift every other day sideways as slots get opened and booked. */
+  /* a day with nothing on it stays in place, dimmed: dropping it would shift every other
+     day sideways as slots get opened and booked. */
   .day.empty{ opacity:.5; }
-  .day.past{ opacity:.4; }
   /* the free-slot count is the only reason to look at a day, so it carries the accent */
   .day.has{ border-color:var(--border-strong); }
   .day.has .cnt{ color:var(--accent); font-weight:600; }
@@ -427,16 +426,34 @@
   /* compact exercise cards for the training plan — replaces a long stacked field list */
   /* per exercise (name/sets/reps/weight/rest/notes) so the coach-notes section below stays reachable */
   /* named exview-* (not ex-*) to avoid colliding with the .ex-card exercise-row editor used in the plan form */
-  .exview-list{ display:flex; flex-direction:column; gap:8px; }
-  .exview-card{ border:1px solid var(--border); border-radius:12px; padding:10px 12px; }
-  .exview-name{ font-size:15px; font-weight:700; margin-bottom:6px; }
-  .exview-stats{ display:grid; grid-template-columns:repeat(4,1fr); gap:5px; }
-  @media (max-width:420px){ .exview-stats{ grid-template-columns:repeat(2,1fr); } }
-  .exview-stat{ background:var(--bg-sunken); border-radius:10px; padding:5px 6px; text-align:center; }
-  .exview-stat-label{ display:block; font-size:10.5px; color:var(--text-muted); margin-bottom:2px; }
-  .exview-stat-value{ display:block; font-size:13.5px; font-weight:700; font-variant-numeric:tabular-nums; }
-  .exview-note{ margin-top:6px; padding-top:6px; border-top:1px dashed var(--border); font-size:12.5px; color:var(--text-secondary); }
+  /* the exercise list used to be a box inside a box inside a box: the plan card held a bordered
+     card per exercise, and each of those held four sunken stat tiles. One frame (the plan card) is
+     enough — exercises are now separated by a hairline rule and the stats read as plain label/value
+     pairs on one line. */
+  .exview-list{ display:flex; flex-direction:column; }
+  .exview-row{ padding:11px 0; border-top:1px solid var(--border); }
+  .exview-row:first-child{ border-top:none; padding-top:2px; }
+  .exview-row:last-child{ padding-bottom:0; }
+  .exview-name{ font-size:15px; font-weight:700; margin-bottom:4px; }
+  .exview-stats{ display:flex; flex-wrap:wrap; gap:2px 16px; }
+  .exview-stat{ font-size:13.5px; white-space:nowrap; }
+  .exview-stat-label{ font-size:12px; color:var(--text-muted); margin-inline-end:5px; }
+  .exview-stat-value{ font-weight:700; font-variant-numeric:tabular-nums; }
+  .exview-note{ margin-top:5px; font-size:12.5px; color:var(--text-secondary); }
   .exview-note-label{ color:var(--text-muted); margin-inline-end:4px; }
+
+  /* training notes: the note is the content, when it was written is metadata. As a table it got
+     two labeled columns of its own — and on a phone that meant two stacked "TIME / 18:30" lines
+     above the note itself. Date and time now share one muted line over the note text. */
+  .note-list{ display:flex; flex-direction:column; }
+  .note-row{ padding:11px 0; border-top:1px solid var(--border); }
+  .note-row:first-child{ border-top:none; padding-top:2px; }
+  .note-row:last-child{ padding-bottom:0; }
+  .note-head{ display:flex; align-items:center; justify-content:space-between; gap:10px; }
+  .note-when{ font-size:12px; color:var(--text-muted); font-variant-numeric:tabular-nums; }
+  .note-actions{ display:flex; gap:2px; flex:none; }
+  .note-text{ font-size:14px; margin-top:2px; }
+  .note-row audio{ display:block; height:30px; max-width:220px; margin-top:6px; }
 
   /* below 700px: stacked "label / value" cards instead of a cramped wide grid — */
   /* avoids the one-word-per-line wrapping a narrow multi-column table forces */
@@ -520,14 +537,15 @@
   .ex-card{ border:1px solid var(--border); border-radius:10px; padding:12px; margin-bottom:10px; background:var(--bg-sunken); }
   .ex-card-top{ display:flex; align-items:center; gap:8px; margin-bottom:8px; }
   .ex-card-top input{ flex:1; font-weight:600; }
-  .ex-card-grid3{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-bottom:8px; }
-  .ex-card-grid2{ display:grid; grid-template-columns:1fr 1fr; gap:8px; }
-  @media (max-width:479px){ .ex-card-grid3{ grid-template-columns:1fr 1fr; } .ex-card-grid2{ grid-template-columns:1fr; } }
+  /* the four short values (sets/reps/weight/rest) hold 1-4 characters, so they share one compact row */
+  .ex-card-nums{ display:grid; grid-template-columns:repeat(4,1fr); gap:6px; margin-bottom:8px; }
+  @media (max-width:339px){ .ex-card-nums{ grid-template-columns:1fr 1fr; } }
   .ex-field-label{ display:block; font-size:10.5px; color:var(--text-muted); margin-bottom:3px; }
   .ex-card input{
     width:100%; padding:12px 12px; border-radius:8px; border:1px solid var(--border-strong);
     background:var(--bg-surface); color:var(--text-primary); font-family:inherit; font-size:16px; min-height:44px;
   }
+  .ex-card-nums input{ padding:10px 4px; text-align:center; }
   .ex-card input:focus-visible{ outline:2px solid var(--accent); outline-offset:1px; }
 
   .hidden{ display:none !important; }
@@ -784,9 +802,6 @@ function isPastSlot(slot){
   if(slot.date !== today) return slot.date < today;
   return slot.startTime <= nowTimeStr();
 }
-/* a whole day is behind us only when the date itself is earlier than today — today is still
-   half-live, so it keeps the ordinary "nothing free" wording. */
-function isPastDate(date){ return date < todayStr(); }
 /* drops the times that already passed when the chosen date is today; other dates pass through. */
 function dropPastTimes(date, times){
   if(date !== todayStr()) return times;
@@ -907,10 +922,13 @@ var ICON_EDIT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stro
 var ICON_DELETE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>';
 var ICON_MIC = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>';
 var ICON_STOP = '<svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="5" y="5" width="14" height="14" rx="2" ry="2"/></svg>';
+function iconBtnHtml(attr, id, label, icon, extraClass){
+  return '<button class="btn btn-icon-only btn-ghost btn-sm'+(extraClass||'')+'" '+attr+'="'+id+'" title="'+label+'" aria-label="'+label+'">'+icon+'</button>';
+}
 function rowActionsHtml(editAttr, delAttr, id){
   return '<td class="actions edit-only">'+
-    '<button class="btn btn-icon-only btn-ghost btn-sm" '+editAttr+'="'+id+'" title="עריכה" aria-label="עריכה">'+ICON_EDIT+'</button>'+
-    '<button class="btn btn-icon-only btn-ghost btn-sm btn-danger" '+delAttr+'="'+id+'" title="מחיקה" aria-label="מחיקה">'+ICON_DELETE+'</button>'+
+    iconBtnHtml(editAttr, id, 'עריכה', ICON_EDIT)+
+    iconBtnHtml(delAttr, id, 'מחיקה', ICON_DELETE, ' btn-danger')+
   '</td>';
 }
 
@@ -1325,9 +1343,7 @@ function renderPlanPanel(panel, client){
         '<div class="section-title" style="margin:0;">הערות אימון</div>'+
         '<button class="btn btn-accent btn-sm edit-only" id="btnNewTrainingNote">+ הערה חדשה</button>'+
       '</div>'+
-      '<div class="table-scroll"><table class="data card-rows"><thead><tr>'+
-        '<th>תאריך</th><th>שעה</th><th>הערה</th><th></th>'+
-      '</tr></thead><tbody id="trainingNoteRows"></tbody></table></div>'+
+      '<div class="note-list" id="trainingNoteRows"></div>'+
       '<div id="trainingNotesToggle" style="margin-top:10px;text-align:center;"></div>'+
     '</div>'+
     '<div class="card" style="margin-top:16px;">'+
@@ -1335,18 +1351,18 @@ function renderPlanPanel(panel, client){
         '<div><h3>תוכנית בתוקף מ־'+fmtDate(viewing.effectiveDate)+'</h3><div class="profile-goal">'+(viewing.coachNotes||'')+'</div></div>'+
         '<div style="display:flex;gap:8px;align-items:center;">'+
           '<select class="select" id="versionSelect">'+optionsHtml+'</select>'+
-          (isHistory ? '' : '<button class="btn btn-sm edit-only" id="btnEditPlan">עריכת גרסה</button><button class="btn btn-accent btn-sm edit-only" id="btnNewPlan">+ גרסה חדשה</button>')+
+          (isHistory ? '' : '<button class="btn btn-sm edit-only" id="btnEditPlan" style="white-space:nowrap;">עריכה</button><button class="btn btn-accent btn-sm edit-only" id="btnNewPlan" style="white-space:nowrap;">+ גרסה</button>')+
         '</div>'+
       '</div>'+
       '<div class="exview-list">'+
       viewing.exercises.map(function(ex){
-        return '<div class="exview-card">'+
+        return '<div class="exview-row">'+
           '<div class="exview-name">'+ex.name+'</div>'+
           '<div class="exview-stats">'+
-            '<div class="exview-stat"><span class="exview-stat-label">סטים</span><span class="exview-stat-value">'+ex.sets+'</span></div>'+
-            '<div class="exview-stat"><span class="exview-stat-label">חזרות</span><span class="exview-stat-value">'+ex.reps+'</span></div>'+
-            '<div class="exview-stat"><span class="exview-stat-label">משקל</span><span class="exview-stat-value">'+ex.weight+'</span></div>'+
-            '<div class="exview-stat"><span class="exview-stat-label">מנוחה</span><span class="exview-stat-value">'+ex.rest+'</span></div>'+
+            '<span class="exview-stat"><span class="exview-stat-label">סטים</span><span class="exview-stat-value">'+ex.sets+'</span></span>'+
+            '<span class="exview-stat"><span class="exview-stat-label">חזרות</span><span class="exview-stat-value">'+ex.reps+'</span></span>'+
+            '<span class="exview-stat"><span class="exview-stat-label">משקל</span><span class="exview-stat-value">'+ex.weight+'</span></span>'+
+            '<span class="exview-stat"><span class="exview-stat-label">מנוחה</span><span class="exview-stat-value">'+ex.rest+'</span></span>'+
           '</div>'+
           (ex.notes ? '<div class="exview-note"><span class="exview-note-label">הערות:</span>'+ex.notes+'</div>' : '')+
         '</div>';
@@ -1381,17 +1397,22 @@ function renderTrainingNotes(panel, client, viewing, sortedPlans){
   var notes = expanded ? allNotes : allNotes.slice(0, 1);
   rows.innerHTML = '';
   if(allNotes.length === 0){
-    rows.innerHTML = '<tr><td colspan="4" class="field-value muted">אין הערות אימון לתוכנית זו עדיין.</td></tr>';
+    rows.innerHTML = '<div class="field-value muted">אין הערות אימון לתוכנית זו עדיין.</div>';
   }
   notes.forEach(function(n){
-    var tr = document.createElement('tr');
-    tr.innerHTML =
-      '<td data-label="תאריך">'+fmtDate(n.date)+'</td><td data-label="שעה">'+(n.time||'—')+'</td>'+
-      '<td class="wrap-value" data-label="הערה">'+n.note+
-        (n.audioUrl ? '<audio controls src="'+n.audioUrl+'" style="display:block;height:30px;max-width:220px;margin-top:6px;"></audio>' : '')+
-      '</td>'+
-      rowActionsHtml('data-edit-note', 'data-del-note', n.id);
-    rows.appendChild(tr);
+    var row = document.createElement('div');
+    row.className = 'note-row';
+    row.innerHTML =
+      '<div class="note-head">'+
+        '<div class="note-when">'+fmtDate(n.date)+(n.time ? ' · '+n.time : '')+'</div>'+
+        '<div class="note-actions edit-only">'+
+          iconBtnHtml('data-edit-note', n.id, 'עריכה', ICON_EDIT)+
+          iconBtnHtml('data-del-note', n.id, 'מחיקה', ICON_DELETE, ' btn-danger')+
+        '</div>'+
+      '</div>'+
+      '<div class="note-text">'+n.note+'</div>'+
+      (n.audioUrl ? '<audio controls src="'+n.audioUrl+'"></audio>' : '');
+    rows.appendChild(row);
   });
   $$('[data-edit-note]', rows).forEach(function(b){
     b.addEventListener('click', function(){
@@ -1688,15 +1709,13 @@ function openPlanForm(client, plan){
         '<input placeholder="שם התרגיל" data-f="name" value="'+ex.name+'">'+
         '<button class="btn btn-icon btn-ghost btn-sm btn-danger" data-remove-row="1">✕</button>'+
       '</div>'+
-      '<div class="ex-card-grid3">'+
+      '<div class="ex-card-nums">'+
         '<div><span class="ex-field-label">סטים</span><input data-f="sets" value="'+ex.sets+'"></div>'+
         '<div><span class="ex-field-label">חזרות</span><input data-f="reps" value="'+ex.reps+'"></div>'+
         '<div><span class="ex-field-label">משקל</span><input data-f="weight" value="'+ex.weight+'"></div>'+
-      '</div>'+
-      '<div class="ex-card-grid2">'+
         '<div><span class="ex-field-label">מנוחה</span><input data-f="rest" value="'+ex.rest+'"></div>'+
-        '<div><span class="ex-field-label">הערות</span><input data-f="notes" value="'+(ex.notes||'')+'"></div>'+
       '</div>'+
+      '<div><span class="ex-field-label">הערות</span><input data-f="notes" value="'+(ex.notes||'')+'"></div>'+
     '</div>';
   }
   var exRowsHtml = v.exercises.map(exCardHtml).join('');
@@ -1839,8 +1858,7 @@ function sortSlots(list){
    day, then see that day's slots as chips — which is also the unit a trainer works in, since
    openSlotForm opens a whole block of hours at once. The direction and the alternative that
    was rejected are in mockups/schedule_calendar_options.html. */
-var STRIP_DAYS_AHEAD = 14;  /* the strip always reaches this far forward, even with no slots yet, */
-var STRIP_DAYS_BACK  = 30;  /* and this far back, so a trainer keeps recent history in reach. */
+var STRIP_DAYS_AHEAD = 14;  /* the strip always reaches this far forward, even with no slots yet. */
 function addDaysToDate(dateStr, n){
   var p = dateStr.split('-');
   var d = new Date(parseInt(p[0],10), parseInt(p[1],10)-1, parseInt(p[2],10)+n);
@@ -1851,20 +1869,23 @@ function dayLetter(dateStr){
   var dow = new Date(parseInt(p[0],10), parseInt(p[1],10)-1, parseInt(p[2],10)).getDay();
   return HEBREW_DAY_LETTERS[dow]+'׳';
 }
-/* The window covers the next two weeks (a trainer has to be able to land on an empty day to
-   open slots on it) and stretches to the furthest slot in either direction, clamped so one
-   stray far-future slot can't turn the strip into hundreds of chips. */
+/* The strip starts at today and never runs backwards (26.08.26): a slot cannot be opened or
+   booked on a day that has passed — the server refuses it too — so those chips were dead ends
+   on a screen whose whole job is picking a date, and the trainer had to scroll past up to a
+   month of them to reach today. Sessions that already happened are read in the client's
+   "התורים שלי" history and in the workout notes, not here.
+   Forward the window covers the next two weeks (a trainer has to be able to land on an empty
+   day to open slots on it) and stretches to the furthest slot ahead, clamped so one stray
+   far-future slot can't turn the strip into hundreds of chips. */
 function stripDates(slots){
   var today = todayStr();
-  var first = today, last = addDaysToDate(today, STRIP_DAYS_AHEAD-1);
+  var last = addDaysToDate(today, STRIP_DAYS_AHEAD-1);
   slots.forEach(function(s){
-    if(s.date < first) first = s.date;
     if(s.date > last) last = s.date;
   });
-  var minDate = addDaysToDate(today, -STRIP_DAYS_BACK), maxDate = addDaysToDate(today, 90);
-  if(first < minDate) first = minDate;
+  var maxDate = addDaysToDate(today, 90);
   if(last > maxDate) last = maxDate;
-  var out = [], d = first;
+  var out = [], d = today;
   while(d <= last){ out.push(d); d = addDaysToDate(d, 1); }
   return out;
 }
@@ -1885,18 +1906,16 @@ function slotsOnDate(slots, date){
 /* Count under each day is the number still open — "מלא" and "עבר" cover the two ways that can
    be zero while the day still has slots on it, which a bare number could not tell apart. A client
    never receives anyone else's booked slots (RLS), so for them a full day simply reads as empty.
-   A day already behind us says "עבר" rather than "—": an empty past day and an empty future day
-   are not the same offer, and only one of them is worth tapping. */
+   "עבר" is today's own case — every hour it had has already started; no earlier day is on the
+   strip at all. */
 function dayStripHtml(dates, selected, slots){
-  var today = todayStr();
   return '<div class="daystrip">'+dates.map(function(d){
     var onDay = slots.filter(function(s){ return s.date===d; });
     var open = onDay.filter(function(s){ return s.status==='open' && !isPastSlot(s); }).length;
-    var past = d < today;
-    var over = past || (onDay.length > 0 && onDay.every(isPastSlot));
+    var over = onDay.length > 0 && onDay.every(isPastSlot);
     var cnt = open ? open+' פנוי' : (over ? 'עבר' : (!onDay.length ? '—' : 'מלא'));
     /* dimmed = nothing left to do there; a fully booked working day stays at full strength. */
-    var cls = 'day'+(d===selected?' active':'')+(!onDay.length||over?' empty':'')+(past?' past':'')+(open?' has':'');
+    var cls = 'day'+(d===selected?' active':'')+(!onDay.length||over?' empty':'')+(open?' has':'');
     return '<button class="'+cls+'" data-day="'+d+'">'+
       '<span class="dow">'+dayLetter(d)+'</span>'+
       '<span class="num">'+parseInt(d.split('-')[2],10)+'</span>'+
@@ -1983,14 +2002,9 @@ function renderMySlotsSection(container){
         var client = s.clientId ? getClient(s.clientId) : null;
         return timeChipHtml(s, client ? client.name : '—');
       }).join('')+'</div>'+slotLegendHtml(true)
-    /* same day, two different reasons for an empty grid — on a past day the "open a block"
-       call to action asks for something the add button (and the server) already refuse. */
-    : (isPastDate(date)
-        ? '<div class="empty-state" style="height:auto;padding:22px 0;"><h2>תאריך שעבר</h2><p>לא ניתן לפתוח משבצות בתאריך שעבר.</p></div>'
-        : '<div class="empty-state" style="height:auto;padding:22px 0;"><h2>אין משבצות ביום זה</h2><p>פתחו בלוק שעות כדי שלקוחות יוכלו לקבוע תור.</p></div>');
-  /* no add button on a day that has passed — the server rejects such a slot anyway
-     (supabase/migrations/2026-08-25_slots_no_past.sql), so offering it would only mislead. */
-  var addBtn = date < todayStr() ? '' : '<button class="btn btn-accent btn-sm" id="btnNewSlot">+ משבצות</button>';
+    : '<div class="empty-state" style="height:auto;padding:22px 0;"><h2>אין משבצות ביום זה</h2><p>פתחו בלוק שעות כדי שלקוחות יוכלו לקבוע תור.</p></div>';
+  /* every day on the strip is today or later, so the add button always applies */
+  var addBtn = '<button class="btn btn-accent btn-sm" id="btnNewSlot">+ משבצות</button>';
   container.innerHTML =
     dayStripHtml(dates, date, mySlots)+
     '<div class="dayhead">'+
@@ -2134,8 +2148,7 @@ function renderAllSlotListBody(container){
     dayStripHtml(dates, date, slots)+
     '<div class="dayhead"><div class="day-title">'+fmtDate(date)+'</div></div>'+
     (sections ? sections+slotLegendHtml(true)
-              : '<div class="empty-state" style="height:auto;padding:22px 0;"><h2>'+
-                  (isPastDate(date) ? 'תאריך שעבר' : 'אין משבצות ביום זה')+'</h2></div>');
+              : '<div class="empty-state" style="height:auto;padding:22px 0;"><h2>אין משבצות ביום זה</h2></div>');
   bindDayStrip(container, function(){ renderAllSlotListBody(container); });
 }
 
@@ -2192,14 +2205,9 @@ function renderOpenSlotsForTrainer(){
         return '<button class="t '+(sel?'t-sel':'t-open')+'" data-pick="'+s.id+'">'+s.startTime+
           '<small>'+(sel?'נבחר':'פנוי')+'</small></button>';
       }).join('')+'</div>'
-    /* on a day that already passed there were never slots to offer — "no free slots" reads as
-       a day the trainer happened not to open, and sends the client looking for another one. */
-    : '<p class="client-sub" style="margin-top:4px;">' +
-      (isPastDate(date) ? 'תאריך שעבר — לא ניתן לקבוע תור.'
-                        : 'אין משבצות פנויות ביום זה.') + '</p>';
+    : '<p class="client-sub" style="margin-top:4px;">אין משבצות פנויות ביום זה.</p>';
   /* the day heading answers "is it worth scanning this grid?" before the eye reaches the chips */
-  var countLabel = isPastDate(date) ? 'תאריך שעבר'
-    : (openCount ? openCount+(openCount===1 ? ' שעה פנויה' : ' שעות פנויות') : 'אין שעות פנויות');
+  var countLabel = openCount ? openCount+(openCount===1 ? ' שעה פנויה' : ' שעות פנויות') : 'אין שעות פנויות';
   /* the appointment is spelled out above the button, not inside its label: day, date and both
      times crammed into one accent button wrapped to three lines on a phone. */
   var confirm = pending

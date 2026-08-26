@@ -297,5 +297,13 @@ create policy training_slots_update_book on training_slots for update
   using (status = 'open' and is_any_client() and slot_is_future(training_slots.date, training_slots.start_time))
   with check (status = 'booked' and client_id = current_client_id());
 
--- no delete policy: cancelling/removing a slot is backlog (see table comment above),
--- so deletes are blocked entirely for every role via the API while RLS is enabled.
+-- delete (26.08.26): a trainer can remove a slot NOBODY booked — their own typo, a block
+-- opened an hour too long. Scoped to status = 'open', so deleting a booked slot (i.e.
+-- cancelling somebody's appointment) stays impossible for every role until that feature is
+-- built properly; that is still backlog. Past open slots are deletable as well — they are
+-- dead rows and nobody can book them any more — while the UI only offers it on future ones.
+create policy training_slots_delete_open on training_slots for delete
+  using (
+    (is_owner() or trainer_id = current_trainer_id())
+    and status = 'open'
+  );

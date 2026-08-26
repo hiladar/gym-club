@@ -286,6 +286,48 @@
   .section-title{ font-size:13px; color:var(--text-muted); text-transform:uppercase; letter-spacing:.5px; margin:22px 0 10px; }
   .section-title:first-child{ margin-top:0; }
 
+  /* ===== scheduling: day strip + time grid (26.08.26) ===== */
+  /* replaced the flat chronological slot list — a day is the unit trainers actually work in,
+     and a full day of 50-min slots fits one phone screen as chips where it took nine
+     full-width cards as a list. Alternatives considered: mockups/schedule_calendar_options.html */
+  .daystrip{ display:flex; gap:6px; overflow-x:auto; padding-bottom:4px; margin-bottom:12px; scrollbar-width:none; -webkit-overflow-scrolling:touch; }
+  .daystrip::-webkit-scrollbar{ display:none; }
+  .day{
+    flex:0 0 auto; width:54px; padding:7px 0 6px; text-align:center; cursor:pointer; font-family:inherit;
+    border:1px solid var(--border); border-radius:11px; background:var(--bg-surface); color:var(--text-primary);
+    -webkit-tap-highlight-color:transparent; touch-action:manipulation;
+    transition:transform .06s ease, background-color .12s ease, border-color .12s ease;
+  }
+  .day:active{ transform:scale(.96); }
+  .day:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
+  .day .dow{ display:block; font-size:11px; color:var(--text-secondary); }
+  .day .num{ display:block; font-size:17px; font-weight:600; line-height:1.2; font-variant-numeric:tabular-nums; }
+  .day .cnt{ display:block; font-size:10px; color:var(--text-muted); }
+  .day.active{ background:var(--accent); border-color:var(--accent); }
+  .day.active .dow, .day.active .num, .day.active .cnt{ color:var(--accent-ink-on); }
+  /* a day with nothing on it stays in place, dimmed — dropping it would shift every other
+     day sideways as slots get opened and booked. */
+  .day.empty{ opacity:.5; }
+  .day-title{ font-size:14px; font-weight:600; }
+
+  .timegrid{ display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+  .timegrid.two{ grid-template-columns:repeat(2,1fr); }
+  .t{
+    text-align:center; padding:10px 4px; border-radius:10px; font-family:inherit; font-size:14px;
+    border:1px solid var(--border); background:var(--bg-surface); color:var(--text-primary);
+    font-variant-numeric:tabular-nums; line-height:1.3; min-height:48px;
+  }
+  .t small{ display:block; font-size:10.5px; font-weight:400; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .t-open{ background:var(--accent-wash); border-color:var(--accent); color:var(--accent); font-weight:600; }
+  .t-booked{ background:var(--warn-bg); border-color:var(--warn-bg); color:var(--warn); }
+  .t-past{ color:var(--text-muted); border-style:dashed; }
+  .t-sel{ background:var(--accent); border-color:var(--accent); color:var(--accent-ink-on); font-weight:600; }
+  button.t{ cursor:pointer; -webkit-tap-highlight-color:transparent; touch-action:manipulation; transition:transform .06s ease; }
+  button.t:active{ transform:scale(.96); }
+  button.t:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
+  .slot-legend{ display:flex; gap:14px; flex-wrap:wrap; margin-top:12px; font-size:11.5px; color:var(--text-secondary); }
+  .slot-legend i{ display:inline-block; width:9px; height:9px; border-radius:3px; margin-inline-end:5px; font-style:normal; }
+
   /* metric switcher + featured chart (mobile-first: one big chart, chips pick the metric) */
   .metric-chips{ display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-bottom:14px; }
   @media (max-width:420px){ .metric-chips{ grid-template-columns:repeat(2,1fr); } }
@@ -682,6 +724,8 @@ var state = {
   view: 'main', // 'main' (client list/detail shell) | 'schedule' (תיאום אימונים)
   slots: [],
   scheduleTrainerId: null, // client role: which trainer's open slots are being browsed; trainer/owner role: filter for "all trainers" tab
+  scheduleDate: null, // day currently shown by the day strip (YYYY-MM-DD); shared by every schedule screen
+  pendingSlotId: null, // client role: slot tapped in the time grid, awaiting the confirm button
   scheduleTab: null, // trainer/owner role: 'mine' | 'all' — which scheduling sub-tab is active (every trainer sees every trainer's slots since 19.08.26)
 };
 
@@ -1630,15 +1674,109 @@ function sortSlots(list){
     return da<db ? -1 : (da>db ? 1 : 0);
   });
 }
-function slotChipHtml(status){
-  return status==='open'
-    ? '<span class="chip" style="background:var(--accent-wash);color:var(--accent);">פנוי</span>'
-    : '<span class="chip chip-warn">תפוס</span>';
-}
+/* still the right shape for "התורים שלי" — a handful of chronological appointments with a
+   trainer's name, which is a list, not a schedule. The slot grids use time chips instead. */
 function slotCardHtml(dateTimeLabel, subLabel, chipOrActionHtml){
   return '<div class="card" style="margin-bottom:8px;padding:12px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px;">'+
     '<div><div style="font-weight:600;">'+dateTimeLabel+'</div>'+(subLabel?'<div class="client-sub">'+subLabel+'</div>':'')+'</div>'+
     chipOrActionHtml+
+  '</div>';
+}
+
+/* ---------- day strip + time grid (26.08.26) ----------
+   The slot screens used to be one flat chronological list of full-width cards, one per
+   50-minute slot, each repeating its own date: a single 09:00-17:00 day was nine cards and a
+   two-trainer week roughly ninety, oldest first. These helpers back the replacement — pick a
+   day, then see that day's slots as chips — which is also the unit a trainer works in, since
+   openSlotForm opens a whole block of hours at once. The direction and the alternative that
+   was rejected are in mockups/schedule_calendar_options.html. */
+var STRIP_DAYS_AHEAD = 14;  /* the strip always reaches this far forward, even with no slots yet, */
+var STRIP_DAYS_BACK  = 30;  /* and this far back, so a trainer keeps recent history in reach. */
+function addDaysToDate(dateStr, n){
+  var p = dateStr.split('-');
+  var d = new Date(parseInt(p[0],10), parseInt(p[1],10)-1, parseInt(p[2],10)+n);
+  return d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate());
+}
+function dayLetter(dateStr){
+  var p = dateStr.split('-');
+  var dow = new Date(parseInt(p[0],10), parseInt(p[1],10)-1, parseInt(p[2],10)).getDay();
+  return HEBREW_DAY_LETTERS[dow]+'׳';
+}
+/* The window covers the next two weeks (a trainer has to be able to land on an empty day to
+   open slots on it) and stretches to the furthest slot in either direction, clamped so one
+   stray far-future slot can't turn the strip into hundreds of chips. */
+function stripDates(slots){
+  var today = todayStr();
+  var first = today, last = addDaysToDate(today, STRIP_DAYS_AHEAD-1);
+  slots.forEach(function(s){
+    if(s.date < first) first = s.date;
+    if(s.date > last) last = s.date;
+  });
+  var minDate = addDaysToDate(today, -STRIP_DAYS_BACK), maxDate = addDaysToDate(today, 90);
+  if(first < minDate) first = minDate;
+  if(last > maxDate) last = maxDate;
+  var out = [], d = first;
+  while(d <= last){ out.push(d); d = addDaysToDate(d, 1); }
+  return out;
+}
+/* keeps the chosen day if it is still on the strip, otherwise lands on today when today has
+   slots, else on the next day that does — so opening the screen shows something, not an empty grid. */
+function ensureScheduleDate(dates, slots){
+  if(state.scheduleDate && dates.indexOf(state.scheduleDate) > -1) return state.scheduleDate;
+  var today = todayStr();
+  function hasSlots(d){ return slots.some(function(s){ return s.date===d; }); }
+  var pick = hasSlots(today) ? today : null;
+  for(var i=0; !pick && i<dates.length; i++){ if(dates[i] > today && hasSlots(dates[i])) pick = dates[i]; }
+  state.scheduleDate = pick || today;
+  return state.scheduleDate;
+}
+function slotsOnDate(slots, date){
+  return sortSlots(slots.filter(function(s){ return s.date===date; }));
+}
+/* Count under each day is the number still open — "מלא" and "עבר" cover the two ways that can
+   be zero while the day still has slots on it, which a bare number could not tell apart. A client
+   never receives anyone else's booked slots (RLS), so for them a full day simply reads as empty. */
+function dayStripHtml(dates, selected, slots){
+  return '<div class="daystrip">'+dates.map(function(d){
+    var onDay = slots.filter(function(s){ return s.date===d; });
+    var open = onDay.filter(function(s){ return s.status==='open' && !isPastSlot(s); }).length;
+    var over = onDay.length > 0 && onDay.every(isPastSlot);
+    var cnt = open ? open+' פנוי' : (!onDay.length ? '—' : (over ? 'עבר' : 'מלא'));
+    /* dimmed = nothing left to do there; a fully booked working day stays at full strength. */
+    return '<button class="day'+(d===selected?' active':'')+(!onDay.length||over?' empty':'')+'" data-day="'+d+'">'+
+      '<span class="dow">'+dayLetter(d)+'</span>'+
+      '<span class="num">'+parseInt(d.split('-')[2],10)+'</span>'+
+      '<span class="cnt">'+cnt+'</span>'+
+    '</button>';
+  }).join('')+'</div>';
+}
+/* rerender is called after the day changes — every screen using the strip redraws itself.
+   Also re-centres the selected day: the strip carries up to a month of history, so without
+   this the screen would open scrolled to the oldest day with today somewhere off to the side. */
+function bindDayStrip(container, rerender){
+  var active = $('.day.active', container);
+  if(active && active.scrollIntoView) active.scrollIntoView({ block:'nearest', inline:'center' });
+  $$('[data-day]', container).forEach(function(b){
+    b.addEventListener('click', function(){
+      state.scheduleDate = b.dataset.day;
+      state.pendingSlotId = null;
+      rerender();
+    });
+  });
+}
+/* `detail` is the second line inside a booked chip — the client's name for a trainer/owner. */
+function timeChipHtml(slot, detail){
+  var past = isPastSlot(slot);
+  var cls = past ? 't-past' : (slot.status==='booked' ? 't-booked' : 't-open');
+  var sub = past ? (slot.status==='booked' ? (detail||'תפוס') : 'עבר')
+                 : (slot.status==='booked' ? (detail||'תפוס') : 'פנוי');
+  return '<div class="t '+cls+'">'+slot.startTime+'<small>'+sub+'</small></div>';
+}
+function slotLegendHtml(withPast){
+  return '<div class="slot-legend">'+
+    '<span><i style="background:var(--accent);"></i>פנוי</span>'+
+    '<span><i style="background:var(--warn);"></i>תפוס</span>'+
+    (withPast ? '<span><i style="background:var(--border-strong);"></i>עבר</span>' : '')+
   '</div>';
 }
 
@@ -1648,35 +1786,42 @@ function renderSchedule(){
   if(currentUser.role === 'client') return renderScheduleClient(main);
 }
 
-/* used by the "המשבצות שלי" tab of renderScheduleTrainerOrOwner — renders the */
-/* add-slot button + this trainer's own slot list into whatever container it's given. */
+/* used by the "המשבצות שלי" tab of renderScheduleTrainerOrOwner — renders the day strip, */
+/* the selected day's slots as a chip grid, and the add-slots button for that same day. */
 function renderMySlotsSection(container){
-  var mySlots = sortSlots(state.slots.filter(function(s){ return s.trainerId===currentUser.trainerId; }));
+  var mySlots = state.slots.filter(function(s){ return s.trainerId===currentUser.trainerId; });
+  var dates = stripDates(mySlots);
+  var date = ensureScheduleDate(dates, mySlots);
+  var onDay = slotsOnDate(mySlots, date);
+  /* two columns rather than three: a booked chip carries the client's name, which needs the width. */
+  var grid = onDay.length
+    ? '<div class="timegrid two">'+onDay.map(function(s){
+        var client = s.clientId ? getClient(s.clientId) : null;
+        return timeChipHtml(s, client ? client.name : '—');
+      }).join('')+'</div>'+slotLegendHtml(true)
+    : '<div class="empty-state" style="height:auto;padding:22px 0;"><h2>אין משבצות ביום זה</h2><p>פתחו בלוק שעות כדי שלקוחות יוכלו לקבוע תור.</p></div>';
+  /* no add button on a day that has passed — the server rejects such a slot anyway
+     (supabase/migrations/2026-08-25_slots_no_past.sql), so offering it would only mislead. */
+  var addBtn = date < todayStr() ? '' : '<button class="btn btn-accent btn-sm" id="btnNewSlot">+ משבצות</button>';
   container.innerHTML =
-    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px;">'+
-      '<div class="section-title" style="margin:0;">המשבצות שלי</div>'+
-      '<button class="btn btn-accent btn-sm" id="btnNewSlot">+ משבצת חדשה</button>'+
-    '</div>'+
-    '<div id="slotListTrainer"></div>';
-  $('#btnNewSlot', container).addEventListener('click', function(){ openSlotForm(); });
-  var list = $('#slotListTrainer', container);
-  if(!mySlots.length){
-    list.innerHTML = '<div class="empty-state"><h2>אין עדיין משבצות</h2><p>הוסיפו משבצת זמן פתוחה כדי שלקוחות יוכלו לקבוע תור.</p></div>';
-    return;
-  }
-  list.innerHTML = mySlots.map(function(s){
-    var client = s.clientId ? getClient(s.clientId) : null;
-    var sub = s.status==='booked' ? ('נקבע עם: '+(client?client.name:'—')) : 'פנוי לקביעה';
-    return slotCardHtml(fmtDate(s.date)+' · '+s.startTime+'–'+s.endTime, sub, slotChipHtml(s.status));
-  }).join('');
+    dayStripHtml(dates, date, mySlots)+
+    '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin:2px 0 12px;flex-wrap:wrap;">'+
+      '<div class="day-title">'+fmtDate(date)+'</div>'+ addBtn +
+    '</div>'+ grid;
+  bindDayStrip(container, function(){ renderMySlotsSection(container); });
+  var add = $('#btnNewSlot', container);
+  if(add) add.addEventListener('click', function(){ openSlotForm(date); });
 }
 /* form lets a trainer mark a whole block of hours available at once (e.g. 09:00–17:00) — added */
 /* 18.08.26 after real usage showed one-slot-at-a-time was tedious for a normal work block. It */
 /* auto-splits the range into consecutive fixed-length slots rather than one manual entry each. */
-function openSlotForm(){
+/* presetDate is the day the strip is currently showing, so the form opens on the day the */
+/* trainer was already looking at instead of always on today. */
+function openSlotForm(presetDate){
   var today = todayStr();
+  var initial = (presetDate && presetDate >= today) ? presetDate : today;
   var body =
-    '<div class="form-row"><label>תאריך</label><input type="date" id="f_slot_date" value="'+today+'" min="'+today+'"></div>'+
+    '<div class="form-row"><label>תאריך</label><input type="date" id="f_slot_date" value="'+initial+'" min="'+today+'"></div>'+
     '<div class="form-grid">'+
       '<div class="form-row"><label>משעה</label><input type="time" id="f_slot_from" value="09:00"></div>'+
       '<div class="form-row"><label>עד שעה</label><input type="time" id="f_slot_to" value="17:00"></div>'+
@@ -1724,6 +1869,7 @@ function openSlotForm(){
     if(res.error){ alert('שגיאה בשמירת המשבצות: '+res.error.message); return; }
     var created = res.data || [];
     created.forEach(function(row){ state.slots.push(slotFromRow(row)); });
+    state.scheduleDate = date; /* jump the day strip to the day just filled in */
     closeModal();
     renderSchedule();
     var duplicates = rows.length - created.length;
@@ -1776,15 +1922,32 @@ function renderAllTrainersSlots(container){
   });
   renderAllSlotListBody($('#allSlotList', container));
 }
+/* one day, one grid per trainer — the flat list could only ever show one trainer's slots
+   interleaved with another's, so comparing two trainers' coverage for a day was impossible. */
 function renderAllSlotListBody(container){
-  var slots = sortSlots(state.scheduleTrainerId ? state.slots.filter(function(s){ return s.trainerId===state.scheduleTrainerId; }) : state.slots);
-  if(!slots.length){ container.innerHTML = '<div class="empty-state"><h2>אין משבצות</h2></div>'; return; }
-  container.innerHTML = slots.map(function(s){
-    var t = state.trainers.find(function(tt){ return tt.id===s.trainerId; });
-    var c = s.clientId ? getClient(s.clientId) : null;
-    var sub = (t?t.name:'—') + (s.status==='booked' ? (' · נקבע עם '+(c?c.name:'—')) : ' · פנוי');
-    return slotCardHtml(fmtDate(s.date)+' · '+s.startTime+'–'+s.endTime, sub, slotChipHtml(s.status));
+  var slots = state.scheduleTrainerId
+    ? state.slots.filter(function(s){ return s.trainerId===state.scheduleTrainerId; })
+    : state.slots;
+  var dates = stripDates(slots);
+  var date = ensureScheduleDate(dates, slots);
+  var onDay = slotsOnDate(slots, date);
+  /* trainers in their usual order, but only the ones with something on this day */
+  var sections = state.trainers.filter(function(t){
+    return onDay.some(function(s){ return s.trainerId===t.id; });
+  }).map(function(t){
+    var his = onDay.filter(function(s){ return s.trainerId===t.id; });
+    return '<div class="section-title" style="margin:16px 0 8px;">'+t.name+'</div>'+
+      '<div class="timegrid two">'+his.map(function(s){
+        var c = s.clientId ? getClient(s.clientId) : null;
+        return timeChipHtml(s, c ? c.name : '—');
+      }).join('')+'</div>';
   }).join('');
+  container.innerHTML =
+    dayStripHtml(dates, date, slots)+
+    '<div class="day-title">'+fmtDate(date)+'</div>'+
+    (sections ? sections+slotLegendHtml(true)
+              : '<div class="empty-state" style="height:auto;padding:22px 0;"><h2>אין משבצות ביום זה</h2></div>');
+  bindDayStrip(container, function(){ renderAllSlotListBody(container); });
 }
 
 function renderScheduleClient(main){
@@ -1803,23 +1966,55 @@ function renderScheduleClient(main){
     '<div class="card" style="margin-top:16px;"><div class="section-title">התורים שלי</div><div id="myBookingsList"></div></div>';
   $('#scheduleTrainerSelect').addEventListener('change', function(e){
     state.scheduleTrainerId = e.target.value || null;
+    state.pendingSlotId = null;
     renderOpenSlotsForTrainer();
   });
   renderOpenSlotsForTrainer();
   renderMyBookings(myBookings);
 }
+/* Tapping a time selects it; the confirm button below spells the whole appointment out before
+   anything is written. The grid holds only what a client can act on: RLS hands them open future
+   slots plus their own bookings and nothing else, so there is no third party's slot to grey out. */
 function renderOpenSlotsForTrainer(){
   var container = $('#openSlotsForTrainer');
   if(!state.scheduleTrainerId){ container.innerHTML=''; return; }
   /* past open slots are filtered out here as well as by RLS — a client only ever sees slots still ahead. */
-  var openSlots = sortSlots(state.slots.filter(function(s){ return s.trainerId===state.scheduleTrainerId && s.status==='open' && !isPastSlot(s); }));
-  if(!openSlots.length){ container.innerHTML = '<p class="client-sub" style="margin-top:10px;">אין משבצות פנויות למאמן/ת זו כרגע.</p>'; return; }
-  container.innerHTML = '<div style="margin-top:10px;">'+openSlots.map(function(s){
-    return slotCardHtml(fmtDate(s.date)+' · '+s.startTime+'–'+s.endTime, '', '<button class="btn btn-accent btn-sm" data-book="'+s.id+'">קביעת תור</button>');
-  }).join('')+'</div>';
-  $$('[data-book]', container).forEach(function(b){
-    onClickBusy(b, function(){ return bookSlot(b.dataset.book); });
+  var visible = state.slots.filter(function(s){
+    return s.trainerId===state.scheduleTrainerId &&
+      ((s.status==='open' && !isPastSlot(s)) || s.clientId===currentUser.clientId);
   });
+  var dates = stripDates(visible);
+  var date = ensureScheduleDate(dates, visible);
+  var onDay = slotsOnDate(visible, date);
+  var pending = onDay.filter(function(s){ return s.id===state.pendingSlotId; })[0];
+  var grid = onDay.length
+    ? '<div class="timegrid">'+onDay.map(function(s){
+        if(s.status!=='open') return '<div class="t '+(isPastSlot(s)?'t-past':'t-booked')+'">'+s.startTime+'<small>התור שלך</small></div>';
+        var sel = s.id===state.pendingSlotId;
+        return '<button class="t '+(sel?'t-sel':'t-open')+'" data-pick="'+s.id+'">'+s.startTime+
+          '<small>'+(sel?'נבחר':'פנוי')+'</small></button>';
+      }).join('')+'</div>'
+    : '<p class="client-sub" style="margin-top:4px;">אין משבצות פנויות ביום זה.</p>';
+  var confirm = pending
+    ? '<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border);">'+
+        '<button class="btn btn-accent" style="width:100%;justify-content:center;" data-book="'+pending.id+'">'+
+          'קביעת תור · '+fmtDate(pending.date)+' '+pending.startTime+'–'+pending.endTime+
+        '</button></div>'
+    : '';
+  container.innerHTML = '<div style="margin-top:14px;">'+
+    dayStripHtml(dates, date, visible)+
+    '<div class="day-title" style="margin-bottom:10px;">'+fmtDate(date)+'</div>'+
+    grid + confirm +
+  '</div>';
+  bindDayStrip(container, renderOpenSlotsForTrainer);
+  $$('[data-pick]', container).forEach(function(b){
+    b.addEventListener('click', function(){
+      state.pendingSlotId = (state.pendingSlotId===b.dataset.pick) ? null : b.dataset.pick;
+      renderOpenSlotsForTrainer();
+    });
+  });
+  var book = $('[data-book]', container);
+  if(book) onClickBusy(book, function(){ return bookSlot(book.dataset.book); });
 }
 function renderMyBookings(list){
   var el = $('#myBookingsList');
@@ -1831,6 +2026,7 @@ function renderMyBookings(list){
 }
 async function bookSlot(slotId){
   var res = await sb.from('training_slots').update({status:'booked', client_id: currentUser.clientId}).eq('id', slotId).select().single();
+  state.pendingSlotId = null;
   if(res.error){
     alert('לא ניתן היה לקבוע את התור (ייתכן שמישהו כבר תפס את המשבצת). מרעננים את הרשימה.');
     try{ await loadState(); } catch(e){}

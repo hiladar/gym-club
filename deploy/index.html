@@ -290,7 +290,15 @@
   /* replaced the flat chronological slot list — a day is the unit trainers actually work in,
      and a full day of 50-min slots fits one phone screen as chips where it took nine
      full-width cards as a list. Alternatives considered: mockups/schedule_calendar_options.html */
-  .daystrip{ display:flex; gap:6px; overflow-x:auto; padding-bottom:4px; margin-bottom:12px; scrollbar-width:none; -webkit-overflow-scrolling:touch; }
+  .daystrip{
+    display:flex; gap:6px; overflow-x:auto; padding:2px 0 6px; margin-bottom:10px;
+    scrollbar-width:none; -webkit-overflow-scrolling:touch; scroll-padding-inline:10px;
+    /* the strip is always mid-scroll (the selected day is centred), so both ends carry a
+       half-visible chip. Fading them reads as "keep scrolling" instead of as a clipped box —
+       that clipping was the single messiest thing about the screen. */
+    -webkit-mask-image:linear-gradient(to right,transparent 0,#000 16px,#000 calc(100% - 16px),transparent 100%);
+    mask-image:linear-gradient(to right,transparent 0,#000 16px,#000 calc(100% - 16px),transparent 100%);
+  }
   .daystrip::-webkit-scrollbar{ display:none; }
   .day{
     flex:0 0 auto; width:54px; padding:7px 0 6px; text-align:center; cursor:pointer; font-family:inherit;
@@ -303,12 +311,19 @@
   .day .dow{ display:block; font-size:11px; color:var(--text-secondary); }
   .day .num{ display:block; font-size:17px; font-weight:600; line-height:1.2; font-variant-numeric:tabular-nums; }
   .day .cnt{ display:block; font-size:10px; color:var(--text-muted); }
-  .day.active{ background:var(--accent); border-color:var(--accent); }
-  .day.active .dow, .day.active .num, .day.active .cnt{ color:var(--accent-ink-on); }
-  /* a day with nothing on it stays in place, dimmed — dropping it would shift every other
-     day sideways as slots get opened and booked. */
+  /* a day with nothing on it — and a day already behind us — stays in place, dimmed:
+     dropping either would shift every other day sideways as slots get opened and booked. */
   .day.empty{ opacity:.5; }
+  .day.past{ opacity:.4; }
+  /* the free-slot count is the only reason to look at a day, so it carries the accent */
+  .day.has{ border-color:var(--border-strong); }
+  .day.has .cnt{ color:var(--accent); font-weight:600; }
+  /* selected always wins over dimming — a washed-out selected day looked disabled */
+  .day.active{ background:var(--accent); border-color:var(--accent); opacity:1; }
+  .day.active .dow, .day.active .num, .day.active .cnt{ color:var(--accent-ink-on); }
+  .dayhead{ display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; margin:2px 0 10px; }
   .day-title{ font-size:14px; font-weight:600; }
+  .day-count{ font-size:12px; color:var(--text-muted); }
 
   .timegrid{ display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
   .timegrid.two{ grid-template-columns:repeat(2,1fr); }
@@ -318,15 +333,47 @@
     font-variant-numeric:tabular-nums; line-height:1.3; min-height:48px;
   }
   .t small{ display:block; font-size:10.5px; font-weight:400; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .t-open{ background:var(--accent-wash); border-color:var(--accent); color:var(--accent); font-weight:600; }
+  /* a whole day of free slots used to be a wall of identical filled accent boxes, which left
+     the selected one with nothing louder to say. Free is now a quiet outlined chip and only
+     the selection is filled. */
+  .t-open{ background:var(--bg-surface); border-color:var(--border-strong); color:var(--accent); font-weight:600; }
+  .t-open small{ color:var(--text-muted); }
   .t-booked{ background:var(--warn-bg); border-color:var(--warn-bg); color:var(--warn); }
-  .t-past{ color:var(--text-muted); border-style:dashed; }
-  .t-sel{ background:var(--accent); border-color:var(--accent); color:var(--accent-ink-on); font-weight:600; }
+  .t-past{ background:var(--bg-sunken); color:var(--text-muted); border-style:dashed; }
+  .t-sel{ background:var(--accent); border-color:var(--accent); color:var(--accent-ink-on); font-weight:700; box-shadow:0 0 0 3px var(--accent-wash); }
+  .t-sel small{ color:var(--accent-ink-on); opacity:.85; }
+  /* the client's own booking inside the grid: theirs (accent), not somebody's (warn) */
+  .t-mine{ background:var(--accent-wash); border-color:var(--accent); color:var(--accent); font-weight:600; }
+  .t-mine small{ color:var(--accent); opacity:.85; }
   button.t{ cursor:pointer; -webkit-tap-highlight-color:transparent; touch-action:manipulation; transition:transform .06s ease; }
   button.t:active{ transform:scale(.96); }
   button.t:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
   .slot-legend{ display:flex; gap:14px; flex-wrap:wrap; margin-top:12px; font-size:11.5px; color:var(--text-secondary); }
   .slot-legend i{ display:inline-block; width:9px; height:9px; border-radius:3px; margin-inline-end:5px; font-style:normal; }
+  /* confirm step: spells the appointment out above the button rather than cramming day, date
+     and both times into the button label, where it wrapped to three lines on a phone. */
+  .confirmbar{ margin-top:14px; padding-top:12px; border-top:1px solid var(--border); }
+  .confirm-when{ font-size:15px; font-weight:600; font-variant-numeric:tabular-nums; }
+  .confirm-who{ font-size:12.5px; color:var(--text-muted); margin-top:2px; margin-bottom:10px; }
+
+  /* "התורים שלי" — flat rows, not cards inside a card. The next appointment is pulled out on
+     top; everything already behind us collapses so history stops sitting above what's next. */
+  .booking-next{
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    background:var(--accent-wash); border:1px solid var(--accent); border-radius:11px;
+    padding:12px 14px; margin-bottom:6px;
+  }
+  .booking-next .booking-when{ color:var(--accent); font-size:15.5px; }
+  .booking-next .booking-who{ color:var(--accent); opacity:.85; }
+  .booking-tag{
+    font-size:11px; font-weight:700; color:var(--accent); background:var(--bg-surface);
+    border-radius:100px; padding:3px 9px; white-space:nowrap; flex:none;
+  }
+  .booking-row{ padding:11px 2px; border-top:1px solid var(--border); }
+  .booking-row.first{ border-top:none; }
+  .booking-row.is-past{ opacity:.62; }
+  .booking-when{ font-weight:600; font-size:14.5px; font-variant-numeric:tabular-nums; }
+  .booking-who{ font-size:12px; color:var(--text-muted); margin-top:2px; }
 
   /* metric switcher + featured chart (mobile-first: one big chart, chips pick the metric) */
   .metric-chips{ display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-bottom:14px; }
@@ -342,6 +389,8 @@
   .metric-chip-value{ font-size:17px; font-weight:600; font-variant-numeric:tabular-nums; }
   .metric-chip-value span{ font-size:11.5px; color:var(--text-muted); font-weight:400; }
   .featured-card{ background:var(--bg-surface); border:1px solid var(--border); border-radius:12px; padding:16px 18px 10px; margin-bottom:22px; }
+  .featured-card.no-chart{ padding-bottom:16px; }
+  .stat-note{ font-size:12.5px; color:var(--text-muted); margin-top:6px; }
   .stat-top{ display:flex; align-items:baseline; justify-content:space-between; margin-bottom:2px; }
   .stat-label{ font-size:12.5px; color:var(--text-secondary); }
   .stat-value{ font-size:30px; font-weight:600; }
@@ -691,6 +740,9 @@ function isPastSlot(slot){
   if(slot.date !== today) return slot.date < today;
   return slot.startTime <= nowTimeStr();
 }
+/* a whole day is behind us only when the date itself is earlier than today — today is still
+   half-live, so it keeps the ordinary "nothing free" wording. */
+function isPastDate(date){ return date < todayStr(); }
 /* drops the times that already passed when the chosen date is today; other dates pass through. */
 function dropPastTimes(date, times){
   if(date !== todayStr()) return times;
@@ -994,13 +1046,38 @@ function renderMetricSwitcher(panel, client){
 
 function renderFeaturedChart(panel, client){
   var m = METRICS.find(function(x){ return x.key===state.featuredMetric; }) || METRICS[0];
-  var d = metricDelta(client, m.key, m.goodDir);
+  /* only measurements where this metric was actually filled in are points on its chart */
+  var pts = client.measurements.map(function(x){ return {date:x.date, value:x[m.key]}; })
+    .filter(function(p){ return p.value!==undefined && p.value!==null && !isNaN(p.value); });
   var host = $('#featuredCard', panel);
+  /* a single point is not a trend: no line to draw and no previous measurement to compare to */
+  host.classList.toggle('no-chart', pts.length<2);
+
+  if(!pts.length){
+    host.innerHTML =
+      '<div class="stat-top"><span class="stat-label">'+m.label+'</span></div>'+
+      '<div class="stat-note">אין עדיין מדידות של '+m.label+'</div>';
+    return;
+  }
+
+  var last = pts[pts.length-1];
+  if(pts.length===1){
+    host.innerHTML =
+      '<div class="stat-top"><span class="stat-label">'+m.label+'</span></div>'+
+      '<div class="stat-value">'+fmt(last.value)+' <span class="stat-unit">'+m.unit+'</span></div>'+
+      '<div class="stat-note">מדידה אחת בלבד ('+fmtDate(last.date)+') — הגרף יוצג מהמדידה השנייה</div>';
+    return;
+  }
+
+  var delta = last.value - pts[pts.length-2].value;
+  var deltaClass = '';
+  if(m.goodDir==='down' && delta<0) deltaClass='good';
+  if(m.goodDir==='up' && delta>0) deltaClass='good';
+  var arrow = delta===0 ? '—' : (delta>0 ? '▲' : '▼');
   host.innerHTML =
     '<div class="stat-top"><span class="stat-label">'+m.label+' לאורך זמן</span>'+
-    '<span class="stat-delta '+d.deltaClass+'">'+d.arrow+' '+fmt(Math.abs(d.delta))+m.unit+' מהמדידה הקודמת</span></div>'+
-    '<div class="stat-value">'+fmt(d.last)+' <span class="stat-unit">'+m.unit+'</span></div>';
-  var pts = client.measurements.map(function(x){ return {date:x.date, value:x[m.key]}; });
+    '<span class="stat-delta '+deltaClass+'">'+arrow+' '+fmt(Math.abs(delta))+m.unit+' מהמדידה הקודמת</span></div>'+
+    '<div class="stat-value">'+fmt(last.value)+' <span class="stat-unit">'+m.unit+'</span></div>';
   var chartHost = document.createElement('div');
   host.appendChild(chartHost);
   renderMiniChart(chartHost, pts, {unit:m.unit, height:140});
@@ -1752,15 +1829,20 @@ function slotsOnDate(slots, date){
 }
 /* Count under each day is the number still open — "מלא" and "עבר" cover the two ways that can
    be zero while the day still has slots on it, which a bare number could not tell apart. A client
-   never receives anyone else's booked slots (RLS), so for them a full day simply reads as empty. */
+   never receives anyone else's booked slots (RLS), so for them a full day simply reads as empty.
+   A day already behind us says "עבר" rather than "—": an empty past day and an empty future day
+   are not the same offer, and only one of them is worth tapping. */
 function dayStripHtml(dates, selected, slots){
+  var today = todayStr();
   return '<div class="daystrip">'+dates.map(function(d){
     var onDay = slots.filter(function(s){ return s.date===d; });
     var open = onDay.filter(function(s){ return s.status==='open' && !isPastSlot(s); }).length;
-    var over = onDay.length > 0 && onDay.every(isPastSlot);
-    var cnt = open ? open+' פנוי' : (!onDay.length ? '—' : (over ? 'עבר' : 'מלא'));
+    var past = d < today;
+    var over = past || (onDay.length > 0 && onDay.every(isPastSlot));
+    var cnt = open ? open+' פנוי' : (over ? 'עבר' : (!onDay.length ? '—' : 'מלא'));
     /* dimmed = nothing left to do there; a fully booked working day stays at full strength. */
-    return '<button class="day'+(d===selected?' active':'')+(!onDay.length||over?' empty':'')+'" data-day="'+d+'">'+
+    var cls = 'day'+(d===selected?' active':'')+(!onDay.length||over?' empty':'')+(past?' past':'')+(open?' has':'');
+    return '<button class="'+cls+'" data-day="'+d+'">'+
       '<span class="dow">'+dayLetter(d)+'</span>'+
       '<span class="num">'+parseInt(d.split('-')[2],10)+'</span>'+
       '<span class="cnt">'+cnt+'</span>'+
@@ -1838,7 +1920,11 @@ function renderMySlotsSection(container){
         var client = s.clientId ? getClient(s.clientId) : null;
         return timeChipHtml(s, client ? client.name : '—');
       }).join('')+'</div>'+slotLegendHtml(true)
-    : '<div class="empty-state" style="height:auto;padding:22px 0;"><h2>אין משבצות ביום זה</h2><p>פתחו בלוק שעות כדי שלקוחות יוכלו לקבוע תור.</p></div>';
+    /* same day, two different reasons for an empty grid — on a past day the "open a block"
+       call to action asks for something the add button (and the server) already refuse. */
+    : (isPastDate(date)
+        ? '<div class="empty-state" style="height:auto;padding:22px 0;"><h2>תאריך שעבר</h2><p>לא ניתן לפתוח משבצות בתאריך שעבר.</p></div>'
+        : '<div class="empty-state" style="height:auto;padding:22px 0;"><h2>אין משבצות ביום זה</h2><p>פתחו בלוק שעות כדי שלקוחות יוכלו לקבוע תור.</p></div>');
   /* no add button on a day that has passed — the server rejects such a slot anyway
      (supabase/migrations/2026-08-25_slots_no_past.sql), so offering it would only mislead. */
   var addBtn = date < todayStr() ? '' : '<button class="btn btn-accent btn-sm" id="btnNewSlot">+ משבצות</button>';
@@ -1985,7 +2071,8 @@ function renderAllSlotListBody(container){
     dayStripHtml(dates, date, slots)+
     '<div class="day-title">'+fmtDate(date)+'</div>'+
     (sections ? sections+slotLegendHtml(true)
-              : '<div class="empty-state" style="height:auto;padding:22px 0;"><h2>אין משבצות ביום זה</h2></div>');
+              : '<div class="empty-state" style="height:auto;padding:22px 0;"><h2>'+
+                  (isPastDate(date) ? 'תאריך שעבר' : 'אין משבצות ביום זה')+'</h2></div>');
   bindDayStrip(container, function(){ renderAllSlotListBody(container); });
 }
 
@@ -2033,7 +2120,11 @@ function renderOpenSlotsForTrainer(){
         return '<button class="t '+(sel?'t-sel':'t-open')+'" data-pick="'+s.id+'">'+s.startTime+
           '<small>'+(sel?'נבחר':'פנוי')+'</small></button>';
       }).join('')+'</div>'
-    : '<p class="client-sub" style="margin-top:4px;">אין משבצות פנויות ביום זה.</p>';
+    /* on a day that already passed there were never slots to offer — "no free slots" reads as
+       a day the trainer happened not to open, and sends the client looking for another one. */
+    : '<p class="client-sub" style="margin-top:4px;">' +
+      (isPastDate(date) ? 'תאריך שעבר — לא ניתן לקבוע תור.'
+                        : 'אין משבצות פנויות ביום זה.') + '</p>';
   var confirm = pending
     ? '<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border);">'+
         '<button class="btn btn-accent" style="width:100%;justify-content:center;" data-book="'+pending.id+'">'+

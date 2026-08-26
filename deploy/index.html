@@ -414,6 +414,7 @@
   .stat-unit{ font-size:13px; color:var(--text-muted); font-weight:400; }
   .stat-delta{ font-size:12.5px; font-weight:600; color:var(--text-secondary); }
   .stat-delta.good{ color:var(--good); }
+  .stat-delta.bad{ color:var(--bad); }
   .chart-wrap{ position:relative; margin-top:8px; }
   .chart-dates{ position:relative; height:15px; margin-top:3px; }
   .chart-date{
@@ -1169,13 +1170,36 @@ function renderMiniChart(container, points, opts){
 }
 
 /* the two kilogram metrics first, then the two percentages — so on a phone, where the chips
-   wrap to two columns, each row holds one kind, and אחוז שומן sits right beside אחוז נוזלים. */
+   wrap to two columns, each row holds one kind, and אחוז שומן sits right beside אחוז נוזלים.
+
+   `goodDir` is the direction that counts as progress, and `noise` is how far a metric has to
+   move between two measurements before the move is called a move at all: under it the arrow
+   stays grey. Scales and body-composition monitors drift by about that much on their own
+   (hydration, time of day, what was eaten), so a smaller difference says nothing about the
+   training and should not be painted green or red. אחוז נוזלים has no good direction — too
+   low and too high are both wrong — so it is never coloured, only measured. (26.08.26)
+
+   `ltr` isolates value+unit as one left-to-right run. "%" belongs to the right of its number,
+   which happens by itself while there IS a number, but with "—" in its place the sign is a
+   lone neutral character and the RTL line drops it on the left. */
 var METRICS = [
-  {key:'weight', label:'משקל', unit:' ק"ג', goodDir:null},
-  {key:'muscle', label:'מסת שריר', unit:' ק"ג', goodDir:'up'},
-  {key:'fat', label:'אחוז שומן', unit:'%', goodDir:'down', ltr:true},
-  {key:'water', label:'אחוז נוזלים', unit:'%', goodDir:null, ltr:true}
+  {key:'weight', label:'משקל', unit:' ק"ג', goodDir:'down', noise:0.5},
+  {key:'muscle', label:'מסת שריר', unit:' ק"ג', goodDir:'up', noise:0.3},
+  {key:'fat', label:'אחוז שומן', unit:'%', goodDir:'down', noise:0.5, ltr:true},
+  {key:'water', label:'אחוז נוזלים', unit:'%', goodDir:null, noise:1, ltr:true}
 ];
+
+/* how a change of `delta` in this metric should read: green for progress, red for the other
+   way, grey while it is still inside the metric's noise band. */
+function deltaTone(m, delta){
+  /* rounded first: 26.9-26.6 is 0.29999999999999716 in binary floating point, so an exactly
+     on-threshold change would fall on the grey side of its own threshold. The number shown
+     next to the arrow is rounded too, so this also keeps colour and text telling one story. */
+  var d = Math.round(delta*100)/100;
+  if(!m.goodDir || Math.abs(d) < m.noise) return '';
+  var good = (m.goodDir==='down' && d<0) || (m.goodDir==='up' && d>0);
+  return good ? 'good' : 'bad';
+}
 
 /* The newest measurement in which THIS metric was actually filled in. A client weighed every
    week but body-fat-tested once a quarter used to read a dash for fat, because the chip took
@@ -1224,9 +1248,7 @@ function renderFeaturedChart(panel, client){
 
   var last = pts[pts.length-1];
   var delta = last.value - pts[pts.length-2].value;
-  var deltaClass = '';
-  if(m.goodDir==='down' && delta<0) deltaClass='good';
-  if(m.goodDir==='up' && delta>0) deltaClass='good';
+  var deltaClass = deltaTone(m, delta);
   var arrow = delta===0 ? '—' : (delta>0 ? '▲' : '▼');
   host.innerHTML =
     '<div class="stat-top"><span class="stat-label">'+m.label+' לאורך זמן</span>'+

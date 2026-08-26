@@ -2095,6 +2095,25 @@ function renderMySlotsSection(container){
     });
   });
 }
+/* <input type="time"> is drawn in the BROWSER's locale, not the page's: on a phone set to
+   English it is a 12-hour AM/PM picker, and the club works in 24-hour time. A select is the only
+   way to pin the format, and it is faster to use than a spinner for the round hours a block of
+   slots actually starts on. Quarter-hour steps between 05:00 and 23:00 cover the club's day;
+   a value from an older record outside that grid is added so it can never be silently changed.
+   (26.08.26) */
+var TIME_STEP_MIN = 15;
+function timeOptions(selected){
+  var out = [];
+  for(var mins = 5*60; mins <= 23*60; mins += TIME_STEP_MIN){ out.push(pad2(Math.floor(mins/60))+':'+pad2(mins%60)); }
+  if(selected && out.indexOf(selected) === -1){ out.push(selected); out.sort(); }
+  return out;
+}
+function timeSelectHtml(id, selected){
+  return '<select id="'+id+'" dir="ltr">'+timeOptions(selected).map(function(v){
+    return '<option value="'+v+'"'+(v===selected?' selected':'')+'>'+v+'</option>';
+  }).join('')+'</select>';
+}
+
 /* form lets a trainer mark a whole block of hours available at once (e.g. 09:00–17:00) — added */
 /* 18.08.26 after real usage showed one-slot-at-a-time was tedious for a normal work block. It */
 /* auto-splits the range into consecutive fixed-length slots rather than one manual entry each. */
@@ -2106,8 +2125,8 @@ function openSlotForm(presetDate){
   var body =
     '<div class="form-row"><label>תאריך</label><input type="date" id="f_slot_date" value="'+initial+'" min="'+today+'"></div>'+
     '<div class="form-grid">'+
-      '<div class="form-row"><label>משעה</label><input type="time" id="f_slot_from" value="09:00"></div>'+
-      '<div class="form-row"><label>עד שעה</label><input type="time" id="f_slot_to" value="17:00"></div>'+
+      '<div class="form-row"><label>משעה</label>'+timeSelectHtml('f_slot_from','09:00')+'</div>'+
+      '<div class="form-row"><label>עד שעה</label>'+timeSelectHtml('f_slot_to','17:00')+'</div>'+
     '</div>'+
     '<div class="field-value" id="f_slot_preview" style="margin-top:4px;"></div>';
   var foot = '<button class="btn" id="btnCancel">ביטול</button><button class="btn btn-accent" id="btnSave">שמירה</button>';
@@ -2132,8 +2151,8 @@ function openSlotForm(presetDate){
       (skipped ? ' · '+skipped+' שעות שכבר עברו היום לא ייווצרו.' : '');
   }
   $('#f_slot_date').addEventListener('input', updatePreview);
-  $('#f_slot_from').addEventListener('input', updatePreview);
-  $('#f_slot_to').addEventListener('input', updatePreview);
+  $('#f_slot_from').addEventListener('change', updatePreview);
+  $('#f_slot_to').addEventListener('change', updatePreview);
   updatePreview();
   onClickBusy($('#btnSave'), async function(){
     var date = $('#f_slot_date').value, from = $('#f_slot_from').value, to = $('#f_slot_to').value;

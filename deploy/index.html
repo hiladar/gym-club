@@ -401,6 +401,11 @@
   .metric-chip-label{ font-size:11.5px; color:var(--text-secondary); }
   .metric-chip-value{ font-size:17px; font-weight:600; font-variant-numeric:tabular-nums; }
   .metric-chip-value span{ font-size:11.5px; color:var(--text-muted); font-weight:400; }
+  /* the LTR-isolated percentage chips would otherwise align their text to the left while the
+     RTL kilogram chips sit on the right — the isolation is about the sign's side, not the value's */
+  .metric-chip-value[dir="ltr"]{ text-align:right; }
+  /* a value with no date is a value with no idea how old it is */
+  .metric-chip-date{ font-size:10.5px; color:var(--text-muted); font-variant-numeric:tabular-nums; }
   .featured-card{ background:var(--bg-surface); border:1px solid var(--border); border-radius:12px; padding:16px 18px 10px; margin-bottom:22px; }
   .featured-card[hidden]{ display:none; }
   .stat-top{ display:flex; align-items:baseline; justify-content:space-between; margin-bottom:2px; }
@@ -1168,27 +1173,31 @@ function renderMiniChart(container, points, opts){
 var METRICS = [
   {key:'weight', label:'משקל', unit:' ק"ג', goodDir:null},
   {key:'muscle', label:'מסת שריר', unit:' ק"ג', goodDir:'up'},
-  {key:'fat', label:'אחוז שומן', unit:'%', goodDir:'down'},
-  {key:'water', label:'אחוז נוזלים', unit:'%', goodDir:null}
+  {key:'fat', label:'אחוז שומן', unit:'%', goodDir:'down', ltr:true},
+  {key:'water', label:'אחוז נוזלים', unit:'%', goodDir:null, ltr:true}
 ];
 
-function metricDelta(client, key, goodDir){
-  var vals = client.measurements.map(function(m){ return m[key]; });
-  var last = vals[vals.length-1], prev = vals.length>1 ? vals[vals.length-2] : last;
-  var delta = last-prev;
-  var deltaClass = '';
-  if(goodDir==='down' && delta<0) deltaClass='good';
-  if(goodDir==='up' && delta>0) deltaClass='good';
-  return {last:last, delta:delta, deltaClass:deltaClass, arrow: delta===0?'—':(delta>0?'▲':'▼')};
+/* The newest measurement in which THIS metric was actually filled in. A client weighed every
+   week but body-fat-tested once a quarter used to read a dash for fat, because the chip took
+   whatever the latest measurement happened to hold. (26.08.26) */
+function lastMetricEntry(client, key){
+  for(var i=client.measurements.length-1; i>=0; i--){
+    var v = client.measurements[i][key];
+    if(v!==undefined && v!==null && !isNaN(v)) return client.measurements[i];
+  }
+  return null;
 }
 
 function renderMetricSwitcher(panel, client){
   var chipsEl = $('#metricChips', panel);
   chipsEl.innerHTML = METRICS.map(function(m){
-    var d = metricDelta(client, m.key, m.goodDir);
+    /* the date the number is from: without it a chip is a value with no idea whether it is
+       from this week or from last winter, and the four chips need not share a date at all. */
+    var entry = lastMetricEntry(client, m.key);
     return '<button class="metric-chip'+(state.featuredMetric===m.key?' active':'')+'" data-metric="'+m.key+'">'+
       '<span class="metric-chip-label">'+m.label+'</span>'+
-      '<span class="metric-chip-value">'+fmt(d.last)+'<span>'+m.unit+'</span></span>'+
+      '<span class="metric-chip-value"'+(m.ltr?' dir="ltr"':'')+'>'+(entry?fmt(entry[m.key]):'—')+'<span>'+m.unit+'</span></span>'+
+      '<span class="metric-chip-date">'+(entry?fmtDateShort(entry.date):'')+'</span>'+
     '</button>';
   }).join('');
   $$('[data-metric]', chipsEl).forEach(function(b){

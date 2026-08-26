@@ -556,6 +556,7 @@
   .login-card{
     width:100%; max-width:360px; background:var(--bg-surface); border:1px solid var(--border);
     border-radius:16px; box-shadow:var(--shadow); padding:28px 24px; display:flex; flex-direction:column; gap:14px;
+    margin:0;
   }
   .login-card h2{
     font-size:19px; text-align:center; margin:0 0 4px;
@@ -566,6 +567,11 @@
     padding:12px 12px; border-radius:8px; border:1px solid var(--border-strong);
     background:var(--bg-sunken); color:var(--text-primary); font-family:inherit; font-size:16px; width:100%; min-height:44px;
   }
+  .login-remember{
+    display:flex; align-items:center; gap:8px; font-size:13px; color:var(--text-secondary);
+    font-weight:600; cursor:pointer; user-select:none; margin:-2px 0 2px;
+  }
+  .login-remember input{ width:18px; height:18px; margin:0; accent-color:var(--accent); flex:none; }
   .login-error{ background:var(--warn-bg); color:var(--warn); font-size:12.5px; padding:8px 10px; border-radius:8px; }
   .login-card .btn{ justify-content:center; }
 </style>
@@ -578,13 +584,14 @@
 </div>
 
 <div class="login-screen hidden" id="loginScreen">
-  <div class="login-card">
+  <form class="login-card" id="loginForm">
     <h2>התחברות</h2>
-    <div class="form-row"><label>אימייל</label><input type="email" id="loginEmail" autocomplete="username" inputmode="email"></div>
-    <div class="form-row"><label>סיסמה</label><input type="password" id="loginPassword" autocomplete="current-password"></div>
+    <div class="form-row"><label for="loginEmail">אימייל</label><input type="email" id="loginEmail" name="email" autocomplete="username" inputmode="email"></div>
+    <div class="form-row"><label for="loginPassword">סיסמה</label><input type="password" id="loginPassword" name="password" autocomplete="current-password"></div>
+    <label class="login-remember"><input type="checkbox" id="loginRemember" checked><span>זכור אותי במכשיר הזה</span></label>
     <div class="login-error hidden" id="loginError"></div>
-    <button class="btn btn-accent" id="btnLogin">התחברות</button>
-  </div>
+    <button class="btn btn-accent" id="btnLogin" type="submit">התחברות</button>
+  </form>
 </div>
 
 <div class="gymapp hidden" id="app">
@@ -630,7 +637,35 @@
 
 var SUPABASE_URL = 'https://ysqdfeqzhvcsujbiiqzl.supabase.co';
 var SUPABASE_KEY = 'sb_publishable_-OJTgbTDvH1FokMidOSJDA_wBxey4P_';
-var sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+/* "זכור אותי" (26.08.26): the login session lives in localStorage when the box */
+/* is ticked (survives closing the browser) and in sessionStorage when it isn't  */
+/* (dies with the tab) — handy on a shared phone at the club. Default: remember. */
+var REMEMBER_KEY = 'gym.rememberLogin';
+function rememberLogin(){
+  try{ return localStorage.getItem(REMEMBER_KEY) !== '0'; } catch(err){ return true; }
+}
+function setRememberLogin(on){
+  try{ localStorage.setItem(REMEMBER_KEY, on ? '1' : '0'); } catch(err){}
+}
+var authStorage = {
+  getItem: function(k){
+    try{ var v = localStorage.getItem(k); return v === null ? sessionStorage.getItem(k) : v; }
+    catch(err){ return null; }
+  },
+  setItem: function(k, v){
+    try{
+      var keep = rememberLogin();
+      (keep ? localStorage : sessionStorage).setItem(k, v);
+      (keep ? sessionStorage : localStorage).removeItem(k);
+    } catch(err){}
+  },
+  removeItem: function(k){
+    try{ localStorage.removeItem(k); sessionStorage.removeItem(k); } catch(err){}
+  }
+};
+var sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+  auth: { storage: authStorage, persistSession: true, autoRefreshToken: true }
+});
 
 /* ---------- auth / roles (owner / trainer / client, added 04.08.26) ---------- */
 var currentUser = { session:null, role:null, trainerId:null, clientId:null };
@@ -1061,10 +1096,12 @@ function renderMiniChart(container, points, opts){
   hitRect.addEventListener('touchcancel', hidePoint);
 }
 
+/* the two kilogram metrics first, then the two percentages — so on a phone, where the chips
+   wrap to two columns, each row holds one kind, and אחוז שומן sits right beside אחוז נוזלים. */
 var METRICS = [
   {key:'weight', label:'משקל', unit:' ק"ג', goodDir:null},
-  {key:'fat', label:'אחוז שומן', unit:'%', goodDir:'down'},
   {key:'muscle', label:'מסת שריר', unit:' ק"ג', goodDir:'up'},
+  {key:'fat', label:'אחוז שומן', unit:'%', goodDir:'down'},
   {key:'water', label:'אחוז נוזלים', unit:'%', goodDir:null}
 ];
 
@@ -2349,6 +2386,8 @@ async function doLogin(){
   var password = $('#loginPassword').value;
   if(!email || !password){ showLoginError('נא למלא אימייל וסיסמה'); return; }
   hideLoginError();
+  /* decided before signing in — it picks the store the new token is written to */
+  setRememberLogin($('#loginRemember').checked);
   var btn = $('#btnLogin');
   if(btn.disabled) return;
   btn.disabled = true; btn.classList.add('is-busy'); btn.setAttribute('aria-busy','true');
@@ -2360,9 +2399,10 @@ async function doLogin(){
     btn.disabled = false; btn.classList.remove('is-busy'); btn.removeAttribute('aria-busy');
   }
 }
-$('#btnLogin').addEventListener('click', doLogin);
-$('#loginPassword').addEventListener('keydown', function(e){ if(e.key === 'Enter') doLogin(); });
-$('#loginEmail').addEventListener('keydown', function(e){ if(e.key === 'Enter') $('#loginPassword').focus(); });
+/* submitting the form (not a bare click) is what makes the browser's password */
+/* manager offer to save the login and fill it in next time                     */
+$('#loginForm').addEventListener('submit', function(e){ e.preventDefault(); doLogin(); });
+$('#loginRemember').checked = rememberLogin();
 
 onClickBusy($('#btnLogout'), async function(){
   await sb.auth.signOut();

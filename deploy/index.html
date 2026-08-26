@@ -2402,6 +2402,14 @@ async function doLogin(){
 /* submitting the form (not a bare click) is what makes the browser's password */
 /* manager offer to save the login and fill it in next time                     */
 $('#loginForm').addEventListener('submit', function(e){ e.preventDefault(); doLogin(); });
+/* Enter keeps its old behaviour — email hops to the password field, password  */
+/* logs in — and preventDefault keeps that from racing the implicit submit     */
+$('#loginEmail').addEventListener('keydown', function(e){
+  if(e.key === 'Enter'){ e.preventDefault(); $('#loginPassword').focus(); }
+});
+$('#loginPassword').addEventListener('keydown', function(e){
+  if(e.key === 'Enter'){ e.preventDefault(); $('#loginForm').requestSubmit(); }
+});
 $('#loginRemember').checked = rememberLogin();
 
 onClickBusy($('#btnLogout'), async function(){

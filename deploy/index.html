@@ -397,6 +397,15 @@
   .stat-delta{ font-size:12.5px; font-weight:600; color:var(--text-secondary); }
   .stat-delta.good{ color:var(--good); }
   .chart-wrap{ position:relative; margin-top:8px; }
+  .chart-dates{ position:relative; height:15px; margin-top:3px; }
+  .chart-date{
+    position:absolute; top:0; font-size:9.5px; line-height:15px; color:var(--text-muted);
+    font-variant-numeric:tabular-nums; white-space:nowrap; transform:translateX(-50%);
+  }
+  /* the outermost labels align to their edge instead of centring on it, so neither one
+     hangs outside the card */
+  .chart-date.at-start{ transform:none; }
+  .chart-date.at-end{ transform:translateX(-100%); }
   .chart-dot{
     position:absolute; width:7px; height:7px; border-radius:50%; box-sizing:border-box;
     background:var(--bg-surface); border:1.5px solid var(--accent);
@@ -994,6 +1003,28 @@ function renderMiniChart(container, points, opts){
   tooltip.className = 'chart-tooltip';
   wrap.appendChild(tooltip);
   container.appendChild(wrap);
+
+  /* the date of every point, in small type under it — reading the chart used to require
+     hovering point by point to find out when anything happened. Day+month only; the year is
+     in the tooltip, and spelling it out here doubles the label width for no gain in a chart
+     that is usually months long.
+     Labels are thinned when they would collide (a client with two years of weekly weigh-ins
+     cannot get 100 legible dates across a phone screen): the newest point always keeps its
+     label and the thinning counts backwards from it, so the last date is never the one
+     dropped. The tooltip still names every point, thinned or not. */
+  var strip = document.createElement('div');
+  strip.className = 'chart-dates';
+  var plotPx = (container.getBoundingClientRect().width || 340) * ((w-padL-padR)/w);
+  var every = Math.max(1, Math.ceil(34 / (plotPx / Math.max(1, points.length-1))));
+  points.forEach(function(p,i){
+    if((points.length-1-i) % every !== 0) return;
+    var el = document.createElement('span');
+    el.className = 'chart-date'+(i===0 ? ' at-start' : (i===points.length-1 ? ' at-end' : ''));
+    el.style.left = (xs[i]/w*100)+'%';
+    el.textContent = p.date.slice(8,10)+'.'+p.date.slice(5,7);
+    strip.appendChild(el);
+  });
+  container.appendChild(strip);
 
   var activeIdx = -1;
   function showPoint(clientX){

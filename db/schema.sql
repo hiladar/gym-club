@@ -111,10 +111,20 @@ create table training_slots (
   end_time    time not null, -- = start_time + 50 minutes, computed app-side on insert
   status      text not null default 'open' check (status in ('open','booked')),
   client_id   uuid references clients(id) on delete set null,
+  -- attendance (26.08.26): the trainer marks a session the client did not turn up to, and the
+  -- client sees the mark on their own past-sessions list. Not marked and "showed up" are the
+  -- same state on purpose — nobody asked to confirm attendance, only to flag its absence —
+  -- and the mark is a toggle, so a mis-tap is undone by tapping again. Written only through
+  -- set_slot_no_show() below, never by a plain UPDATE.
+  no_show     boolean not null default false,
   created_at  timestamptz not null default now(),
-  constraint training_slots_booked_has_client check (status <> 'booked' or client_id is not null)
+  constraint training_slots_booked_has_client check (status <> 'booked' or client_id is not null),
+  constraint training_slots_no_show_booked check (not no_show or status = 'booked')
 );
 create index on training_slots (trainer_id, date, start_time);
+-- per-client month ranges: "how many sessions did this client do in August, how many did they
+-- miss" is the end-of-month count the club settles on (26.08.26).
+create index on training_slots (client_id, date);
 -- guards against a trainer accidentally double-entering the same slot; not a
 -- substitute for a real anti-double-booking transaction (see RLS notes below).
 create unique index training_slots_trainer_datetime_uniq on training_slots (trainer_id, date, start_time);
@@ -307,3 +317,41 @@ create policy training_slots_delete_open on training_slots for delete
     (is_owner() or trainer_id = current_trainer_id())
     and status = 'open'
   );
+
+-- attendance marking (26.08.26): deliberately an RPC and not a fourth UPDATE policy.
+-- training_slots_update_owner keeps slot_is_future() in its WITH CHECK, which makes every
+-- past row read-only for every role — that is what holds "cancel an appointment" (backlog)
+-- out of reach. Marking a no-show happens only after the session, i.e. on exactly those
+-- read-only rows, and a second permissive policy would be OR-ed with the existing ones and
+-- reopen past rows to arbitrary edits, every column of them. This function is the narrow
+-- version: it writes no_show and nothing else, and re-checks the caller itself — the slot's
+-- own trainer (or the owner), a slot that is booked, and a session that has already started.
+-- See supabase/migrations/2026-08-26_slot_no_show.sql.
+create or replace function set_slot_no_show(p_slot_id uuid, p_no_show boolean)
+returns training_slots
+language plpgsql security definer
+set search_path = public
+as $$
+declare s training_slots;
+begin
+  select * into s from training_slots where id = p_slot_id;
+  if not found then
+    raise exception 'slot not found' using errcode = 'no_data_found';
+  end if;
+  if not (is_owner() or s.trainer_id = current_trainer_id()) then
+    raise exception 'only the slot''s trainer may mark attendance' using errcode = 'insufficient_privilege';
+  end if;
+  if s.status <> 'booked' then
+    raise exception 'slot is not booked' using errcode = 'check_violation';
+  end if;
+  if slot_is_future(s.date, s.start_time) then
+    raise exception 'session has not started yet' using errcode = 'check_violation';
+  end if;
+  update training_slots set no_show = coalesce(p_no_show, false)
+    where id = p_slot_id
+    returning * into s;
+  return s;
+end;
+$$;
+revoke all on function set_slot_no_show(uuid, boolean) from public;
+grant execute on function set_slot_no_show(uuid, boolean) to authenticated;

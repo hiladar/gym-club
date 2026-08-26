@@ -389,11 +389,17 @@
   /* "התורים שלי" — flat rows, not cards inside a card. Upcoming appointments read as one
      plain list — the nearest one is simply first, with no highlight of its own — and everything
      already behind us collapses so history stops sitting above what's next. */
-  .booking-row{ padding:11px 2px; border-top:1px solid var(--border); }
+  .booking-row{ display:flex; align-items:center; gap:10px; padding:11px 2px; border-top:1px solid var(--border); }
   #myBookingsList .booking-row:first-child{ border-top:none; padding-top:2px; }
   .booking-row.is-past{ opacity:.62; }
   .booking-when{ font-weight:600; font-size:14.5px; font-variant-numeric:tabular-nums; }
   .booking-who{ font-size:12px; color:var(--text-muted); margin-top:2px; }
+  /* the attendance mark the trainer left on a past session (26.08.26). Warn, not danger: a
+     missed session is worth noticing on the list, not worth shouting at the client about. */
+  .booking-mark{
+    margin-inline-start:auto; flex:none; font-size:11px; font-weight:700;
+    padding:3px 9px; border-radius:100px; background:var(--warn-bg); color:var(--warn);
+  }
 
   /* "האימונים שלי" (trainer/owner) — the booked half of the schedule, read as a diary:
      grouped by day, one row per session, the client's name carrying the row and the hour
@@ -414,6 +420,33 @@
   .appt-row.is-past{ opacity:.62; }
   .appt-time{ font-weight:600; font-size:14.5px; font-variant-numeric:tabular-nums; flex:none; }
   .appt-client{ font-size:14.5px; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+  /* attendance toggle on a session that already happened (26.08.26). The row itself opens the
+     client's card, so the toggle cannot live inside it — a button inside a button is invalid
+     markup and swallows the tap. The two sit side by side in .appt-line instead, which takes
+     over the row's separator so the pair still reads as one line. */
+  .appt-line{ display:flex; align-items:center; gap:8px; border-top:1px solid var(--border); }
+  .dayhead + .appt-line{ border-top:none; }  /* the day heading is the separator for its first row */
+  .appt-line .appt-row{ border-top:none; flex:1; min-width:0; }
+  /* off = an outline the eye passes over; on = the same pill filled, so marking a session
+     does not change the row's width and nothing shifts under the finger. */
+  .noshow-btn{
+    position:relative; flex:none; min-height:34px; padding:6px 11px; border-radius:100px;
+    font-family:inherit; font-size:11.5px; font-weight:700; white-space:nowrap; cursor:pointer;
+    border:1px solid var(--border-strong); background:none; color:var(--text-muted);
+    -webkit-tap-highlight-color:transparent; touch-action:manipulation;
+    transition:transform .06s ease, background-color .12s ease, color .12s ease;
+  }
+  .noshow-btn:active{ transform:scale(.95); }
+  .noshow-btn:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
+  .noshow-btn[aria-pressed="true"]{ background:var(--warn-bg); border-color:var(--warn-bg); color:var(--warn); }
+  /* onClickBusy swaps the label for a spinner; .btn styles it, this control is not a .btn */
+  .noshow-btn.is-busy{ color:transparent; cursor:progress; }
+  .noshow-btn.is-busy::after{
+    content:''; position:absolute; inset-block-start:calc(50% - 6px); inset-inline-start:calc(50% - 6px);
+    width:12px; height:12px; border-radius:50%; border:2px solid var(--text-muted); border-top-color:transparent;
+    animation:btn-spin .6s linear infinite;
+  }
 
   /* ===== "ראשי" — the client's landing tab (26.08.26) =====
      A client logging in used to land on the same four-tab profile card a trainer works in, and
@@ -862,7 +895,7 @@ function slotFromRow(row){
   return {
     id: row.id, trainerId: row.trainer_id, date: row.date,
     startTime: row.start_time ? row.start_time.slice(0,5) : '', endTime: row.end_time ? row.end_time.slice(0,5) : '',
-    status: row.status, clientId: row.client_id || null
+    status: row.status, clientId: row.client_id || null, noShow: !!row.no_show
   };
 }
 var SLOT_LENGTH_MIN = 50; // fixed session length, see PROJECT.md ("מודול תיאום אימונים")
@@ -2521,6 +2554,19 @@ function relDayLabel(date){
   var tomorrow = d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate());
   return date === tomorrow ? 'מחר' : '';
 }
+/* The attendance mark, offered only on sessions that already happened — before one starts
+   there is nothing to report. Unpressed the pill reads as the action ("לא הגיע/ה" — tap to say
+   so), pressed it reads as the state; the label stays the same either way so marking a
+   session doesn't resize the row under the finger, and aria-pressed carries the difference
+   for a screen reader. Tapping again takes the mark back — a mis-tap has a way out, and a
+   client who turned up late after all shouldn't stay flagged. (26.08.26) */
+function noShowBtnHtml(slot){
+  var on = !!slot.noShow;
+  var title = on ? 'ביטול הסימון — כן הגיע/ה לאימון'
+                : 'סימון שהלקוח/ה לא הגיע/ה לאימון';
+  return '<button class="noshow-btn" data-noshow="'+slot.id+'" aria-pressed="'+(on?'true':'false')+
+    '" title="'+title+'" aria-label="'+title+'">לא הגיע/ה</button>';
+}
 function apptRowHtml(slot, isPastRow){
   var c = slot.clientId ? getClient(slot.clientId) : null;
   var inner = '<span class="appt-time">'+slot.startTime+'–'+slot.endTime+'</span>'+
@@ -2528,9 +2574,12 @@ function apptRowHtml(slot, isPastRow){
   var cls = 'appt-row'+(isPastRow ? ' is-past' : '');
   /* a client the trainer can't load (deleted, or outside what RLS returns) has no card to
      open, so that row is plain text rather than a button that would lead nowhere */
-  if(!c) return '<div class="'+cls+'">'+inner+'</div>';
-  return '<button class="'+cls+'" data-appt-client="'+c.id+'">'+inner+
-    '<span class="client-chevron">‹</span></button>';
+  var row = c
+    ? '<button class="'+cls+'" data-appt-client="'+c.id+'">'+inner+
+        '<span class="client-chevron">‹</span></button>'
+    : '<div class="'+cls+'">'+inner+'</div>';
+  if(!isPastRow) return row;
+  return '<div class="appt-line">'+row+noShowBtnHtml(slot)+'</div>';
 }
 function apptDaysHtml(list, isPastRows){
   return groupSlotsByDate(list).map(function(g){
@@ -2574,6 +2623,21 @@ function renderMyAppointmentsSection(container){
   });
   $$('[data-appt-client]', container).forEach(function(b){
     b.addEventListener('click', function(){ openClientDetail(b.dataset.apptClient); });
+  });
+  $$('[data-noshow]', container).forEach(function(b){
+    onClickBusy(b, async function(){
+      var slot = state.slots.filter(function(x){ return x.id===b.dataset.noshow; })[0];
+      if(!slot) return;
+      /* an RPC rather than an update on the table: a past slot is read-only under RLS on
+         purpose (see db/schema.sql), and set_slot_no_show is the one door through it — it
+         writes this column only, and re-checks trainer/booked/already-started itself. */
+      var res = await sb.rpc('set_slot_no_show', { p_slot_id: slot.id, p_no_show: !slot.noShow });
+      if(res.error){ alert('לא ניתן לעדכן את סימון ההגעה: '+res.error.message); return; }
+      var idx = state.slots.findIndex(function(x){ return x.id===slot.id; });
+      if(res.data && res.data.id && idx>-1) state.slots[idx] = slotFromRow(res.data);
+      else slot.noShow = !slot.noShow;
+      renderMyAppointmentsSection(container);
+    });
   });
 }
 
@@ -2753,9 +2817,12 @@ function renderMyBookings(list){
   }
   function when(s){ return fmtDate(s.date)+' · '+s.startTime+'–'+s.endTime; }
   function rowHtml(s, isPastRow){
+    /* the trainer's attendance mark, read-only here — the client sees that a session went
+       down as missed without having to ask about it at the next one (26.08.26) */
     return '<div class="booking-row'+(isPastRow?' is-past':'')+'">'+
-      '<div class="booking-when">'+when(s)+'</div>'+
-      '<div class="booking-who">'+whoWith(s)+'</div>'+
+      '<div><div class="booking-when">'+when(s)+'</div>'+
+      '<div class="booking-who">'+whoWith(s)+'</div></div>'+
+      (s.noShow ? '<span class="booking-mark">לא הגעת</span>' : '')+
     '</div>';
   }
   var html = '';

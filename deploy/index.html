@@ -388,8 +388,7 @@
   .metric-chip-value{ font-size:17px; font-weight:600; font-variant-numeric:tabular-nums; }
   .metric-chip-value span{ font-size:11.5px; color:var(--text-muted); font-weight:400; }
   .featured-card{ background:var(--bg-surface); border:1px solid var(--border); border-radius:12px; padding:16px 18px 10px; margin-bottom:22px; }
-  .featured-card.no-chart{ padding-bottom:16px; }
-  .stat-note{ font-size:12.5px; color:var(--text-muted); margin-top:6px; }
+  .featured-card[hidden]{ display:none; }
   .stat-top{ display:flex; align-items:baseline; justify-content:space-between; margin-bottom:2px; }
   .stat-label{ font-size:12.5px; color:var(--text-secondary); }
   .stat-value{ font-size:30px; font-weight:600; }
@@ -1103,25 +1102,14 @@ function renderFeaturedChart(panel, client){
   var pts = client.measurements.map(function(x){ return {date:x.date, value:x[m.key]}; })
     .filter(function(p){ return p.value!==undefined && p.value!==null && !isNaN(p.value); });
   var host = $('#featuredCard', panel);
-  /* a single point is not a trend: no line to draw and no previous measurement to compare to */
-  host.classList.toggle('no-chart', pts.length<2);
-
-  if(!pts.length){
-    host.innerHTML =
-      '<div class="stat-top"><span class="stat-label">'+m.label+'</span></div>'+
-      '<div class="stat-note">אין עדיין מדידות של '+m.label+'</div>';
-    return;
-  }
+  /* A single point is not a trend: nothing to draw a line between and no previous measurement
+     to compare to. The whole card goes away rather than standing there explaining itself — the
+     value and its date are already in the chips above and in the measurements table below, so
+     an empty-looking box only takes up the screen a client's first measurement is read on. */
+  host.hidden = pts.length<2;
+  if(host.hidden){ host.innerHTML = ''; return; }
 
   var last = pts[pts.length-1];
-  if(pts.length===1){
-    host.innerHTML =
-      '<div class="stat-top"><span class="stat-label">'+m.label+'</span></div>'+
-      '<div class="stat-value">'+fmt(last.value)+' <span class="stat-unit">'+m.unit+'</span></div>'+
-      '<div class="stat-note">מדידה אחת בלבד ('+fmtDate(last.date)+') — הגרף יוצג מהמדידה השנייה</div>';
-    return;
-  }
-
   var delta = last.value - pts[pts.length-2].value;
   var deltaClass = '';
   if(m.goodDir==='down' && delta<0) deltaClass='good';
@@ -1625,9 +1613,8 @@ function openMeasurementForm(client, m){
   var v = m || {date:todayStr(),weight:'',fat:'',water:'',muscle:'',fatMass:'',waist:'',chest:'',arm:'',thigh:'',notes:''};
   var body =
     '<div class="form-row"><label>תאריך</label><input type="date" id="f_date" value="'+v.date+'"></div>'+
+    '<div class="form-row"><label>משקל (ק"ג)</label><input type="number" step="0.1" id="f_weight" value="'+v.weight+'"></div>'+
     '<div class="form-grid">'+
-      '<div class="form-row"><label>משקל (ק"ג)</label><input type="number" step="0.1" id="f_weight" value="'+v.weight+'"></div>'+
-      '<div class="form-row"><label>BMI (מחושב)</label><div class="field-value" id="f_bmi_preview">'+(bmiFor(client, v.weight)?fmt(bmiFor(client, v.weight)):'—')+'</div></div>'+
       '<div class="form-row"><label>אחוז שומן (%)</label><input type="number" step="0.1" id="f_fat" value="'+v.fat+'"></div>'+
       '<div class="form-row"><label>אחוז נוזלים (%)</label><input type="number" step="0.1" id="f_water" value="'+v.water+'"></div>'+
       '<div class="form-row"><label>מסת שריר (ק"ג)</label><input type="number" step="0.1" id="f_muscle" value="'+v.muscle+'"></div>'+
@@ -1641,11 +1628,6 @@ function openMeasurementForm(client, m){
   var foot = '<button class="btn" id="btnCancel">ביטול</button><button class="btn btn-accent" id="btnSave">שמירה</button>';
   openModal(isNew ? 'מדידה חדשה' : 'עריכת מדידה', body, foot);
   $('#btnCancel').addEventListener('click', closeModal);
-  $('#f_weight').addEventListener('input', function(){
-    var w = parseFloat($('#f_weight').value);
-    var bmi = bmiFor(client, w);
-    $('#f_bmi_preview').textContent = bmi ? fmt(bmi) : '—';
-  });
   onClickBusy($('#btnSave'), async function(){
     var num = function(id){ var val = parseFloat($(id).value); return isNaN(val) ? 0 : val; };
     var data = {

@@ -347,6 +347,7 @@
   button.t{ cursor:pointer; -webkit-tap-highlight-color:transparent; touch-action:manipulation; transition:transform .06s ease; }
   button.t:active{ transform:scale(.96); }
   button.t:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
+  .add-slots-btn{ width:100%; justify-content:center; margin-top:14px; }
   .slot-legend{ display:flex; gap:14px; flex-wrap:wrap; margin-top:12px; font-size:11.5px; color:var(--text-secondary); }
   .slot-legend i{ display:inline-block; width:9px; height:9px; border-radius:3px; margin-inline-end:5px; font-style:normal; }
   /* confirm step: spells the appointment out above the button rather than cramming day, date
@@ -2030,13 +2031,16 @@ function renderMySlotsSection(container){
         return timeChipHtml(s, client ? client.name : '—');
       }).join('')+'</div>'+slotLegendHtml(true)
     : '<div class="empty-state" style="height:auto;padding:22px 0;"><h2>אין משבצות ביום זה</h2><p>פתחו בלוק שעות כדי שלקוחות יוכלו לקבוע תור.</p></div>';
-  /* every day on the strip is today or later, so the add button always applies */
-  var addBtn = '<button class="btn btn-accent btn-sm" id="btnNewSlot">+ משבצות</button>';
+  /* The add button used to sit beside the day's date, where a full day of slots pushed it into
+     a cramped corner of the heading. At the end of the list it reads as what it is — one more
+     thing to add after what is already there — and it is a full-width tap target. Every day on
+     the strip is today or later, so the button always applies. (26.08.26) */
+  var addBtn = '<button class="btn btn-accent add-slots-btn" id="btnNewSlot">+ הוספת משבצות</button>';
   container.innerHTML =
     dayStripHtml(dates, date, mySlots)+
     '<div class="dayhead">'+
-      '<div class="day-title">'+fmtDate(date)+'</div>'+ addBtn +
-    '</div>'+ grid;
+      '<div class="day-title">'+fmtDate(date)+'</div>'+
+    '</div>'+ grid + addBtn;
   bindDayStrip(container, function(){ renderMySlotsSection(container); });
   var add = $('#btnNewSlot', container);
   if(add) add.addEventListener('click', function(){ openSlotForm(date); });

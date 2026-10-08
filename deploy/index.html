@@ -932,7 +932,18 @@ function slotFromRow(row){
     status: row.status, clientId: row.client_id || null, noShow: !!row.no_show
   };
 }
-var SLOT_LENGTH_MIN = 50; // fixed session length, see PROJECT.md ("מודול תיאום אימונים")
+var SLOT_LENGTH_MIN = 45; // fixed session length, see PROJECT.md ("מודול תיאום אימונים")
+/* The club's booking window (08.10.26, owner's rule): no session starts before 08:30 and none
+   runs past 20:15. Both halves of the slot form read these — the hour pickers offer nothing
+   outside the window, and the save re-checks it — so the window lives here and not in two
+   places that can drift apart. 08:30 + 45 min lands on the quarter-hour grid all the way to
+   19:30-20:15, the last block that fits. */
+var DAY_START_TIME = '08:30';
+var DAY_END_TIME   = '20:15';
+function timeToMinutes(hhmm){
+  var parts = hhmm.split(':');
+  return parseInt(parts[0],10)*60 + parseInt(parts[1],10);
+}
 function addMinutesToTime(hhmm, minutes){
   var parts = hhmm.split(':'); var total = (parseInt(parts[0],10)*60 + parseInt(parts[1],10) + minutes) % (24*60);
   var h = Math.floor(total/60), m = total%60;
@@ -2292,8 +2303,8 @@ function sortSlots(list){
 
 /* ---------- day strip + time grid (26.08.26) ----------
    The slot screens used to be one flat chronological list of full-width cards, one per
-   50-minute slot, each repeating its own date: a single 09:00-17:00 day was nine cards and a
-   two-trainer week roughly ninety, oldest first. These helpers back the replacement — pick a
+   45-minute slot, each repeating its own date: a single 09:00-17:00 day was ten cards and a
+   two-trainer week roughly a hundred, oldest first. These helpers back the replacement — pick a
    day, then see that day's slots as chips — which is also the unit a trainer works in, since
    openSlotForm opens a whole block of hours at once. The direction and the alternative that
    was rejected are in mockups/schedule_calendar_options.html. */
@@ -2486,13 +2497,15 @@ function renderMySlotsSection(container){
 /* <input type="time"> is drawn in the BROWSER's locale, not the page's: on a phone set to
    English it is a 12-hour AM/PM picker, and the club works in 24-hour time. A select is the only
    way to pin the format, and it is faster to use than a spinner for the round hours a block of
-   slots actually starts on. Quarter-hour steps between 05:00 and 23:00 cover the club's day;
-   a value from an older record outside that grid is added so it can never be silently changed.
-   (26.08.26) */
+   slots actually starts on. Quarter-hour steps across the club's booking window (DAY_START_TIME
+   to DAY_END_TIME) — a trainer cannot pick an hour the rule forbids, because it is not on the
+   list; a value from an older record outside that grid is added so it can never be silently
+   changed. (26.08.26, window added 08.10.26) */
 var TIME_STEP_MIN = 15;
 function timeOptions(selected){
   var out = [];
-  for(var mins = 5*60; mins <= 23*60; mins += TIME_STEP_MIN){ out.push(pad2(Math.floor(mins/60))+':'+pad2(mins%60)); }
+  var first = timeToMinutes(DAY_START_TIME), last = timeToMinutes(DAY_END_TIME);
+  for(var mins = first; mins <= last; mins += TIME_STEP_MIN){ out.push(pad2(Math.floor(mins/60))+':'+pad2(mins%60)); }
   if(selected && out.indexOf(selected) === -1){ out.push(selected); out.sort(); }
   return out;
 }
@@ -2526,6 +2539,10 @@ function openSlotForm(presetDate){
     if(!date || !from || !to){ el.textContent = ''; return; }
     if(date < todayStr()){ el.textContent = 'לא ניתן לפתוח משבצות בתאריך שעבר.'; return; }
     if(to <= from){ el.textContent = 'שעת הסיום חייבת להיות אחרי שעת ההתחלה.'; return; }
+    if(from < DAY_START_TIME || to > DAY_END_TIME){
+      el.textContent = 'ניתן לפתוח אימונים רק בין '+DAY_START_TIME+' ל-'+DAY_END_TIME+'.';
+      return;
+    }
     var all = generateSlotTimes(from, to, SLOT_LENGTH_MIN);
     var times = dropPastTimes(date, all);
     if(!times.length){
@@ -2546,6 +2563,12 @@ function openSlotForm(presetDate){
     var date = $('#f_slot_date').value, from = $('#f_slot_from').value, to = $('#f_slot_to').value;
     if(!date || !from || !to){ alert('יש למלא תאריך, שעת התחלה ושעת סיום'); return; }
     if(date < todayStr()){ alert('לא ניתן לפתוח משבצות בתאריך שעבר.'); return; }
+    /* the pickers already hold nothing outside the window; this catches the one way a value
+       can get past them — timeOptions widens the list for a value carried in from an older
+       record — so the rule is enforced on the write, not only on the way the form is drawn. */
+    if(from < DAY_START_TIME || to > DAY_END_TIME){
+      alert('ניתן לפתוח אימונים רק בין '+DAY_START_TIME+' ל-'+DAY_END_TIME+'.'); return;
+    }
     var all = generateSlotTimes(from, to, SLOT_LENGTH_MIN);
     if(!all.length){ alert('הטווח קצר מדי ליצירת משבצת אחת לפחות ('+SLOT_LENGTH_MIN+' דק׳).'); return; }
     var times = dropPastTimes(date, all);

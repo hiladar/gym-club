@@ -108,7 +108,7 @@ create table training_slots (
   trainer_id  uuid not null references trainers(id) on delete cascade,
   date        date not null,
   start_time  time not null,
-  end_time    time not null, -- = start_time + 50 minutes, computed app-side on insert
+  end_time    time not null, -- = start_time + 45 minutes, computed app-side on insert
   status      text not null default 'open' check (status in ('open','booked')),
   client_id   uuid references clients(id) on delete set null,
   -- attendance (26.08.26): the trainer marks a session the client did not turn up to, and the
